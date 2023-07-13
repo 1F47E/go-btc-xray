@@ -10,11 +10,8 @@ import (
 	"math/big"
 	"net"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 
-	// "github.com/btcsuite/btcd/wire"
 	wire "github.com/btcsuite/btcd/wire"
 
 	"github.com/miekg/dns"
@@ -23,42 +20,40 @@ import (
 var cfg = config.New()
 
 type Node struct {
-	Address   net.IP   `json:"address"`
-	Conn      net.Conn `json:"-"`
+	Addr      net.TCPAddr `json:"address"`
+	Conn      net.Conn    `json:"-"`
 	PingNonce uint64
 	PingCount uint8
-	peers     []Peer
+	IsAlive   bool
 }
 
-func NewNode(address net.IP) *Node {
-	return &Node{
-		Address: address,
-		peers:   make([]Peer, 0),
-	}
+func NewNode(addr net.TCPAddr) *Node {
+	return &Node{Addr: addr}
 }
 
-func (n *Node) AddPeer(addr string) {
-	p := Peer{
-		Addr:    addr,
-		IsAlive: false,
-	}
-	n.peers = append(n.peers, p)
+func (n *Node) Endpoint() string {
+	return fmt.Sprintf("%s:%d", n.Addr.IP, n.Addr.Port)
 }
 
-func (n *Node) ListPeers() []Peer {
-	return n.peers
+func (n *Node) IsGood() bool {
+	return (n.IsAlive && n.PingCount > 0)
 }
 
 func (n *Node) Connect() {
-	a := fmt.Sprintf("-> %s:%d", n.Address.String(), cfg.NodesPort)
+	a := fmt.Sprintf("-> %s", n.Endpoint())
 	log.Printf("[%s]: connecting...\n", a)
-	defer fmt.Printf("[%s]: closed\n", a)
+	defer func() {
+		n.Conn = nil
+		fmt.Printf("[%s]: closed\n", a)
+	}()
 	timeout := time.Duration(5 * time.Second)
-	conn, err := net.DialTimeout("tcp", n.Address.String()+":"+strconv.Itoa(cfg.NodesPort), timeout)
+	conn, err := net.DialTimeout("tcp", n.Endpoint(), timeout)
 	if err != nil {
+		n.IsAlive = false
 		log.Printf("[%s]: failed to connect: %v\n", a, err)
 		return
 	}
+	n.IsAlive = true
 	log.Printf("[%s]: connected\n", a)
 	n.Conn = conn
 	// handle answers
@@ -213,25 +208,18 @@ func NodesRead(filename string) ([]*Node, error) {
 		return ret, err
 	}
 	for _, addr := range data {
-		// if port specified
-		if strings.Contains(addr, ":") {
-			spl := strings.Split(addr, ":")
-			addr = spl[0]
-		}
-		if addr == "" {
+		a, err := net.ResolveTCPAddr("tcp", addr)
+		if err != nil {
+			log.Println("failed to resolve addr: ", addr)
 			continue
 		}
-		ip := net.ParseIP(addr)
-		if ip == nil {
-			continue
-		}
-		ret = append(ret, &Node{Address: ip})
+		ret = append(ret, &Node{Addr: *a})
 	}
 
 	return ret, nil
 }
 
-func NodesScan() ([]*Node, error) {
+func SeedScan() ([]*Node, error) {
 	nodes := make([]*Node, 0)
 	fmt.Println("Getting nodes from dns seeds... via ", cfg.DnsAddress)
 	now := time.Now()
@@ -239,8 +227,6 @@ func NodesScan() ([]*Node, error) {
 		return nil, fmt.Errorf("no dns seeds")
 	}
 	for _, seed := range cfg.DnsSeeds {
-		// fmt.Printf("Asking seed [%s] for nodes...", seed)
-		// fmt.Printf("Dns timeout: %v dnsAddress: %s", cfg.DnsTimeout, cfg.DnsAddress)
 		m := new(dns.Msg)
 		m.SetQuestion(dns.Fqdn(seed), dns.TypeA)
 		c := new(dns.Client)
@@ -261,11 +247,12 @@ func NodesScan() ([]*Node, error) {
 			record := ans.(*dns.A)
 			// check if already exists
 			for _, node := range nodes {
-				if node.Address.Equal(record.A) {
+				if node.Addr.IP.Equal(record.A) {
 					continue
 				}
 			}
-			nodes = append(nodes, &Node{Address: record.A})
+			n := Node{Addr: net.TCPAddr{IP: record.A, Port: int(cfg.NodesPort)}}
+			nodes = append(nodes, &n)
 		}
 	}
 	if len(nodes) == 0 {
@@ -275,8 +262,8 @@ func NodesScan() ([]*Node, error) {
 
 	// save nodes as json
 	fData := make([]string, len(nodes))
-	for i, node := range nodes {
-		fData[i] = node.Address.String()
+	for i, n := range nodes {
+		fData[i] = n.Endpoint()
 	}
 	fDataJson, err := json.MarshalIndent(fData, "", "  ")
 	if err != nil {
@@ -294,45 +281,12 @@ func NodesScan() ([]*Node, error) {
 // remote peer.
 func (n *Node) localVersionMsg() (*wire.MsgVersion, error) {
 	var blockNum int32
-	// if p.cfg.NewestBlock != nil {
-	// 	var err error
-	// 	_, blockNum, err = p.cfg.NewestBlock()
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// }
-
-	// theirNA := p.na.ToLegacy()
-	// theirNA := wire.NetAddr{Services: 0x00, Address: net.ParseIP("::ffff:127.0.0.1"), Port: 0}
 	theirNA := wire.NetAddress{
 		Services: wire.SFNodeNetwork,
 		IP:       net.ParseIP("::ffff:127.0.0.1"),
 		Port:     0,
 	}
 
-	// If p.na is a torv3 hidden service address, we'll need to send over
-	// an empty NetAddress for their address.
-	// if p.na.IsTorV3() {
-	// 	theirNA = wire.NewNetAddressIPPort(
-	// 		net.IP([]byte{0, 0, 0, 0}), p.na.Port, p.na.Services,
-	// 	)
-	// }
-
-	// If we are behind a proxy and the connection comes from the proxy then
-	// we return an unroutable address as their address. This is to prevent
-	// leaking the tor proxy address.
-	// if p.cfg.Proxy != "" {
-	// 	proxyaddress, _, err := net.SplitHostPort(p.cfg.Proxy)
-	// 	// invalid proxy means poorly configured, be on the safe side.
-	// 	if err != nil || p.na.Addr.String() == proxyaddress {
-	// 		theirNA = wire.NewNetAddressIPPort(net.IP([]byte{0, 0, 0, 0}), 0,
-	// 			theirNA.Services)
-	// 	}
-	// }
-
-	// Create a wire.NetAddress with only the services set to use as the
-	// "addrme" in the version message.
-	//
 	// Older nodes previously added the IP and port information to the
 	// address manager which proved to be unreliable as an inbound
 	// connection from a peer didn't necessarily mean the peer itself
@@ -340,30 +294,20 @@ func (n *Node) localVersionMsg() (*wire.MsgVersion, error) {
 	//
 	// Also, the timestamp is unused in the version message.
 	ourNA := &wire.NetAddress{
-		// Services: p.cfg.Services,
 		Services: wire.SFNodeNetwork,
 	}
 
 	// Generate a unique nonce for this peer so self connections can be
 	// detected.  This is accomplished by adding it to a size-limited map of
 	// recently seen nonces.
-	// rnd, err := rand.New(rand.NewSource(time.Now().UnixNano()))
 	nonceBig, _ := rand.Int(rand.Reader, big.NewInt(int64(math.Pow(2, 62))))
-	nonce := nonceBig.Uint64()
-	// nonce = uint64(123123123)
-	// sentNonces.Add(nonce)
+	n.PingNonce = nonceBig.Uint64()
 
 	// Version message.
-	msg := wire.NewMsgVersion(ourNA, &theirNA, nonce, blockNum)
-	// msg.AddUserAgent(p.cfg.UserAgentName, p.cfg.UserAgentVersion,
-	// p.cfg.UserAgentComments...)
-
-	// Advertise local services.
+	msg := wire.NewMsgVersion(ourNA, &theirNA, n.PingNonce, blockNum)
+	_ = msg.AddUserAgent("btcd", "0.23.3", "")
 	msg.Services = wire.SFNodeNetwork
-
-	// Advertise our max supported protocol version.
 	msg.ProtocolVersion = int32(cfg.Pver)
-
 	// Advertise if inv messages for transactions are desired.
 	// msg.DisableRelayTx = p.cfg.DisableRelayTx
 

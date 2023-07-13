@@ -18,7 +18,7 @@ type Config struct {
 	Network   Network
 	NodesDB   string
 	PeersDB   string
-	NodesPort int
+	NodesPort uint16
 
 	DnsAddress string
 	DnsTimeout time.Duration

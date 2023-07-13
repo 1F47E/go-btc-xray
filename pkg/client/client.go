@@ -1,70 +1,85 @@
 package client
 
 import (
-	"encoding/json"
 	"log"
-	"os"
+	"net"
 	"sync"
 	"time"
 )
 
 var mu = sync.Mutex{}
 
+// batch of new addresses. not block the sented (listner) goroutine
+var newNodesCh = make(chan []string, 100)
+
 type Client struct {
-	nodes []*Node
-	peers map[string]*Peer
+	nodes map[string]*Node
 }
 
 func NewClient(nodes []*Node) *Client {
-	return &Client{
-		nodes: nodes,
-		peers: make(map[string]*Peer),
+	c := Client{
+		nodes: make(map[string]*Node),
 	}
+	for _, n := range nodes {
+		c.nodes[n.Endpoint()] = n
+	}
+	return &c
 }
-func (c *Client) UpdatePeers() {
-	for {
-		time.Sleep(5 * time.Second)
-		mu.Lock()
-		for _, node := range c.nodes {
-			for _, peer := range node.peers {
-				if _, ok := c.peers[peer.Addr]; !ok {
-					c.peers[peer.Addr] = &peer
-				}
-			}
-		}
-		log.Printf("[PEERS]: total peers found %d\n", len(c.peers))
 
-		// update json
-		// TODO: merge peers and nodes
-		// save only good peers with ping cnt > 3
-		goodPeers := make([]string, 0)
-		for addr := range c.peers {
-			// if peer.IsAlive {
-			// }
-			// if
-			goodPeers = append(goodPeers, addr)
+// TODO: run in batches + connect to the new nodes
+func (c *Client) NewNodesListner() {
+	for addrs := range newNodesCh {
+		log.Printf("[NODES]: got batch %d new nodes\n", len(addrs))
+		mu.Lock()
+		for _, addr := range addrs {
+			tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
+			if err != nil {
+				log.Printf("[NODES]: failed to resolve addr %s: %v\n", addr, err)
+				continue
+			}
+			n := Node{Addr: *tcpAddr}
+			c.nodes[n.Endpoint()] = &n
 		}
 		mu.Unlock()
+	}
+}
 
-		j, err := json.MarshalIndent(goodPeers, "", "  ")
-		if err != nil {
-			log.Printf("[PEERS]: failed to marshal peers: %v\n", err)
+func (c *Client) UpdateNodes() {
+	for {
+		time.Sleep(10 * time.Second)
+		log.Printf("[NODES]: update nodes. total now %d\n", len(c.nodes))
+
+		// filter good nodes
+		good := make([]string, 0)
+		mu.Lock()
+		for addr, node := range c.nodes {
+			if node.IsGood() {
+				good = append(good, addr)
+			}
+
+			if !node.IsAlive {
+				log.Printf("[NODES]: node %s is dead\n", addr)
+				delete(c.nodes, addr)
+			}
+		}
+		mu.Unlock()
+		perc := float64(len(good)) / float64(len(c.nodes)) * 100
+		log.Printf("[NODES]: good nodes %d/%d (%.2f%%)\n", len(good), len(c.nodes), perc)
+		if len(good) == 0 {
 			continue
 		}
-		// create new file, overwrite
-		// uppend to a file
-		// f, err := os.OpenFile(cfg.PeersDB, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+
+		// save to json file
+		// j, err := json.MarshalIndent(good, "", "  ")
 		// if err != nil {
-		// 	log.Printf("[PEERS]: failed to open peers: %v\n", err)
+		// 	log.Printf("[NODES]: failed to marshal nodes: %v\n", err)
 		// 	continue
 		// }
-		// write to the end
-		// _, err = f.Write(j)
-		err = os.WriteFile(cfg.PeersDB, j, 0644)
-		if err != nil {
-			log.Printf("[PEERS]: failed to write peers: %v\n", err)
-			continue
-		}
-		log.Printf("[PEERS]: saved %v peers to %v\n", len(c.peers), cfg.PeersDB)
+		// err = os.WriteFile(cfg.NodesDB, j, 0644)
+		// if err != nil {
+		// 	log.Printf("[NODES]: failed to write nodes: %v\n", err)
+		// 	continue
+		// }
+		// log.Printf("[NODES]: saved %d node to %v\n", len(good), cfg.PeersDB)
 	}
 }

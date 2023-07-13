@@ -9,7 +9,7 @@ import (
 )
 
 func (n *Node) connListen() {
-	a := fmt.Sprintf("<- %s:%d", n.Address.String(), cfg.NodesPort)
+	a := fmt.Sprintf("<- %s", n.Endpoint())
 	defer func() {
 		n.Conn = nil
 		log.Printf("[%s]: closed\n", a)
@@ -55,18 +55,18 @@ func (n *Node) connListen() {
 		log.Printf("[%s]: Got message: %d bytes, cmd: %s rawPayload len: %d\n", a, cnt, msg.Command(), len(rawPayload))
 		switch m := msg.(type) {
 		case *wire.MsgVersion:
-			log.Printf("[%s]: MsgVersion received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: MsgVersion received\n", a)
 			log.Printf("[%s]: version: %v\n", a, m.ProtocolVersion)
 			log.Printf("[%s]: msg: %+v\n", a, m)
 		case *wire.MsgVerAck:
-			log.Printf("[%s]: MsgVerAck received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: MsgVerAck received\n", a)
 			log.Printf("[%s]: msg: %+v\n", a, m)
 		case *wire.MsgPing:
-			log.Printf("[%s]: MsgPing received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: MsgPing received\n", a)
 			log.Printf("[%s]: nonce: %v\n", a, m.Nonce)
 			log.Printf("[%s]: msg: %+v\n", a, m)
 		case *wire.MsgPong:
-			log.Printf("[%s]: MsgPong received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: MsgPong received\n", a)
 			if m.Nonce == n.PingNonce {
 				log.Printf("[%s]: pong OK\n", a)
 				n.PingCount++
@@ -75,43 +75,36 @@ func (n *Node) connListen() {
 				log.Printf("[%s]: pong nonce mismatch, expected %v, got %v\n", a, n.PingNonce, m.Nonce)
 			}
 		case *wire.MsgAddr:
-			log.Printf("[%s]: MsgAddr received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: MsgAddr received\n", a)
 			log.Printf("[%s]: got %d addresses\n", a, len(m.AddrList))
-			for _, a := range m.AddrList {
-				addrStr := fmt.Sprintf("%v:%v", a.IP.String(), a.Port)
-				n.AddPeer(addrStr)
+			batch := make([]string, len(m.AddrList))
+			for i, a := range m.AddrList {
+				batch[i] = fmt.Sprintf("%s:%d", a.IP.String(), a.Port)
 			}
+			newNodesCh <- batch
 		case *wire.MsgAddrV2:
-			log.Printf("[%s]: MsgAddrV2 received from %v\n", a, n.Address.String())
-			// get list of addresses
-			// for _, addr := range m.AddrList {
-			// 	log.Printf("[listner]: addr: %+v\n", addr)
-			// }
+			log.Printf("[%s]: MsgAddrV2 received\n", a)
 			log.Printf("[%s]: got %d addresses\n", a, len(m.AddrList))
-			for _, a := range m.AddrList {
-				addrStr := fmt.Sprintf("%v:%v", a.Addr.String(), a.Port)
-				n.AddPeer(addrStr)
+			batch := make([]string, len(m.AddrList))
+			for i, a := range m.AddrList {
+				batch[i] = fmt.Sprintf("%s:%d", a.Addr.String(), a.Port)
 			}
-			// send ack
-			// mAck := wire.NewMsgSendAddrV2()
-			// mAck.(*wire.MsgSendAddrV2).AddrList = make([]*wire.NetAddressV2, 0)
-			// mAck.AddrList = make([]*wire.NetAddressV2, 0)
-			// mAck.AddrList = append(m.AddrList, m.AddrList...)
+			newNodesCh <- batch
 
 		case *wire.MsgInv:
-			log.Printf("[%s]: MsgInv received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: MsgInv received\n", a)
 			log.Printf("[%s]: data: %d\n", a, len(m.InvList))
 			// TODO: answer on inv
 
 		case *wire.MsgFeeFilter:
-			log.Printf("[%s]: MsgFeeFilter received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: MsgFeeFilter received\n", a)
 			log.Printf("[%s]: fee: %v\n", a, m.MinFee)
 		case *wire.MsgGetHeaders:
-			log.Printf("[%s]: MsgGetHeaders received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: MsgGetHeaders received\n", a)
 			log.Printf("[%s]: headers: %d\n", a, len(m.BlockLocatorHashes))
 
 		default:
-			log.Printf("[%s]: unknown message received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: unknown message received\n", a)
 			log.Printf("[%s]: msg: %+v\n", a, m)
 		}
 	}
