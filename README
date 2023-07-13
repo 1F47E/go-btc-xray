@@ -1,0 +1,10 @@
+Custom implementation of bitcoin protocol
+
+
+TODO:
+- [x] resolve seed nodes via dns
+- [x] connect to nodes
+- [x] do handshake (version, verack, ping)
+- [ ] get addr from peer
+- [ ] update and store peers
+- [ ] API to get peers
