@@ -50,9 +50,8 @@ func main() {
 	// go node.Connect()
 
 	// connect to all nodes
-	for _, node := range nodes {
-		go node.Connect()
-	}
+	go c.Connector()
+	// go c.NewNodesListner()
 	// always block for now
 	wg.Add(1)
 	wg.Wait()

@@ -24,7 +24,7 @@ type Node struct {
 	Conn      net.Conn    `json:"-"`
 	PingNonce uint64
 	PingCount uint8
-	IsAlive   bool
+	IsDead    bool // mark to delete
 }
 
 func NewNode(addr net.TCPAddr) *Node {
@@ -32,11 +32,19 @@ func NewNode(addr net.TCPAddr) *Node {
 }
 
 func (n *Node) Endpoint() string {
-	return fmt.Sprintf("%s:%d", n.Addr.IP, n.Addr.Port)
+	return fmt.Sprintf("%s:%d", n.Addr.IP.String(), n.Addr.Port)
+}
+
+func (n *Node) EndpointSafe() string {
+	return fmt.Sprintf("[%s]:%d", n.Addr.IP.String(), n.Addr.Port)
 }
 
 func (n *Node) IsGood() bool {
-	return (n.IsAlive && n.PingCount > 0)
+	return (!n.IsDead && n.PingCount > 0)
+}
+
+func (n *Node) IsConnected() bool {
+	return n.Conn != nil
 }
 
 func (n *Node) Connect() {
@@ -49,14 +57,14 @@ func (n *Node) Connect() {
 	timeout := time.Duration(5 * time.Second)
 	conn, err := net.DialTimeout("tcp", n.Endpoint(), timeout)
 	if err != nil {
-		n.IsAlive = false
+		n.IsDead = true
 		log.Printf("[%s]: failed to connect: %v\n", a, err)
 		return
 	}
-	n.IsAlive = true
 	log.Printf("[%s]: connected\n", a)
 	n.Conn = conn
 	// handle answers
+	// TODO: fix goroutine leak
 	go n.connListen()
 
 	// ===== NEGOTIATION
@@ -110,12 +118,13 @@ func (n *Node) Connect() {
 
 	// ====== NEGOTIATION DONE
 
+	time.Sleep(1 * time.Second)
+
 	// ask for peers once
 	if n.Conn == nil {
 		log.Printf("[%s]: disconnected\n", a)
 		return
 	}
-	time.Sleep(1 * time.Second)
 	log.Printf("[%s]: sending getaddr...\n", a)
 	msgAddr := wire.NewMsgGetAddr()
 	cnt, err = wire.WriteMessageN(n.Conn, msgAddr, cfg.Pver, cfg.Btcnet)
@@ -131,6 +140,10 @@ func (n *Node) Connect() {
 	for {
 		if n.Conn == nil {
 			log.Printf("[%s]: disconnected\n", a)
+			return
+		}
+		if n.PingCount >= 1 {
+			log.Printf("[%s]: ping count reached\n", a)
 			return
 		}
 		log.Printf("[%s]: sending ping...\n", a)
@@ -263,7 +276,7 @@ func SeedScan() ([]*Node, error) {
 	// save nodes as json
 	fData := make([]string, len(nodes))
 	for i, n := range nodes {
-		fData[i] = n.Endpoint()
+		fData[i] = n.EndpointSafe() // [addr]:port for ipv6
 	}
 	fDataJson, err := json.MarshalIndent(fData, "", "  ")
 	if err != nil {

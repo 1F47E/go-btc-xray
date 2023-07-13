@@ -17,6 +17,9 @@ func (n *Node) connListen() {
 	// buf := make([]byte, 65536)
 	// bufReader := bufio.NewReader(n.Conn)
 	for {
+		if n.Conn == nil {
+			return
+		}
 		fmt.Println()
 		// cnt, err := bufReader.Read(buf)
 		// if err != nil {
@@ -79,7 +82,7 @@ func (n *Node) connListen() {
 			log.Printf("[%s]: got %d addresses\n", a, len(m.AddrList))
 			batch := make([]string, len(m.AddrList))
 			for i, a := range m.AddrList {
-				batch[i] = fmt.Sprintf("%s:%d", a.IP.String(), a.Port)
+				batch[i] = fmt.Sprintf("[%s]:%d", a.IP.String(), a.Port)
 			}
 			newNodesCh <- batch
 		case *wire.MsgAddrV2:
@@ -87,7 +90,7 @@ func (n *Node) connListen() {
 			log.Printf("[%s]: got %d addresses\n", a, len(m.AddrList))
 			batch := make([]string, len(m.AddrList))
 			for i, a := range m.AddrList {
-				batch[i] = fmt.Sprintf("%s:%d", a.Addr.String(), a.Port)
+				batch[i] = fmt.Sprintf("[%s]:%d", a.Addr.String(), a.Port)
 			}
 			newNodesCh <- batch
 

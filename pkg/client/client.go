@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"sync"
@@ -38,9 +39,69 @@ func (c *Client) NewNodesListner() {
 				continue
 			}
 			n := Node{Addr: *tcpAddr}
-			c.nodes[n.Endpoint()] = &n
+			// add only if new
+			addr := n.EndpointSafe()
+			if _, ok := c.nodes[addr]; !ok {
+				c.nodes[addr] = &n
+			}
 		}
 		mu.Unlock()
+	}
+}
+
+// count connected nodes
+func (c *Client) ConnectedNodesCnt() int {
+	cnt := 0
+	mu.Lock()
+	for _, node := range c.nodes {
+		if node.IsDead {
+			continue
+		}
+		if node.IsConnected() {
+			cnt++
+		}
+	}
+	mu.Unlock()
+	return cnt
+}
+
+func (c *Client) Connector() {
+	limit := 5
+	for {
+		time.Sleep(1 * time.Second)
+		connectedCnt := c.ConnectedNodesCnt()
+		left := limit - connectedCnt
+		// connect only if have slot
+		if left <= 0 {
+			continue
+		}
+		// select node to connect to
+		waitlist := make([]*Node, 0)
+		mu.Lock()
+		for _, node := range c.nodes {
+			if node.IsConnected() {
+				continue
+			}
+			if node.PingCount > 0 {
+				continue
+			}
+			if node.IsDead {
+				continue
+			}
+			waitlist = append(waitlist, node)
+		}
+		mu.Unlock()
+		fmt.Printf("[NODES]: %d/%d nodes connected\n", connectedCnt, limit)
+		if left > 0 && len(waitlist) > 0 {
+			fmt.Printf("[NODES]: %d nodes in waitlist\n", len(waitlist))
+			fmt.Printf("[NODES]: connecting to %d nodes\n", left)
+			for i := 0; i <= left; i++ {
+				if i >= len(waitlist) {
+					break
+				}
+				go waitlist[i].Connect()
+			}
+		}
 	}
 }
 
@@ -52,15 +113,19 @@ func (c *Client) UpdateNodes() {
 		// filter good nodes
 		good := make([]string, 0)
 		mu.Lock()
+		toDelete := make([]string, 0)
 		for addr, node := range c.nodes {
 			if node.IsGood() {
 				good = append(good, addr)
 			}
 
-			if !node.IsAlive {
+			if node.IsDead {
 				log.Printf("[NODES]: node %s is dead\n", addr)
-				delete(c.nodes, addr)
+				toDelete = append(toDelete, addr)
 			}
+		}
+		for _, addr := range toDelete {
+			delete(c.nodes, addr)
 		}
 		mu.Unlock()
 		perc := float64(len(good)) / float64(len(c.nodes)) * 100
