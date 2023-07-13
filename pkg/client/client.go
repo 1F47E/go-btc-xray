@@ -33,21 +33,33 @@ func (c *Client) UpdatePeers() {
 			}
 		}
 		log.Printf("[PEERS]: total peers found %d\n", len(c.peers))
+
 		// update json
-		peers := make([]string, 0)
+		// TODO: merge peers and nodes
+		// save only good peers with ping cnt > 3
+		goodPeers := make([]string, 0)
 		for addr := range c.peers {
 			// if peer.IsAlive {
 			// }
-			peers = append(peers, addr)
+			// if
+			goodPeers = append(goodPeers, addr)
 		}
 		mu.Unlock()
 
-		j, err := json.MarshalIndent(peers, "", "  ")
+		j, err := json.MarshalIndent(goodPeers, "", "  ")
 		if err != nil {
 			log.Printf("[PEERS]: failed to marshal peers: %v\n", err)
 			continue
 		}
 		// create new file, overwrite
+		// uppend to a file
+		// f, err := os.OpenFile(cfg.PeersDB, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		// if err != nil {
+		// 	log.Printf("[PEERS]: failed to open peers: %v\n", err)
+		// 	continue
+		// }
+		// write to the end
+		// _, err = f.Write(j)
 		err = os.WriteFile(cfg.PeersDB, j, 0644)
 		if err != nil {
 			log.Printf("[PEERS]: failed to write peers: %v\n", err)

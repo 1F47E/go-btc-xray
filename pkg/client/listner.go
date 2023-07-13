@@ -67,8 +67,13 @@ func (n *Node) connListen() {
 			log.Printf("[%s]: msg: %+v\n", a, m)
 		case *wire.MsgPong:
 			log.Printf("[%s]: MsgPong received from %v\n", a, n.Address.String())
-			log.Printf("[%s]: nonce: %v\n", a, m.Nonce)
-			log.Printf("[%s]: msg: %+v\n", a, m)
+			if m.Nonce == n.PingNonce {
+				log.Printf("[%s]: pong OK\n", a)
+				n.PingCount++
+				n.PingNonce = 0
+			} else {
+				log.Printf("[%s]: pong nonce mismatch, expected %v, got %v\n", a, n.PingNonce, m.Nonce)
+			}
 		case *wire.MsgAddr:
 			log.Printf("[%s]: MsgAddr received from %v\n", a, n.Address.String())
 			log.Printf("[%s]: got %d addresses\n", a, len(m.AddrList))

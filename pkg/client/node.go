@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	// "github.com/btcsuite/btcd/wire"
@@ -22,10 +23,11 @@ import (
 var cfg = config.New()
 
 type Node struct {
-	Address net.IP   `json:"address"`
-	Conn    net.Conn `json:"-"`
-	nonce   uint64
-	peers   []Peer
+	Address   net.IP   `json:"address"`
+	Conn      net.Conn `json:"-"`
+	PingNonce uint64
+	PingCount uint8
+	peers     []Peer
 }
 
 func NewNode(address net.IP) *Node {
@@ -51,8 +53,10 @@ func (n *Node) Connect() {
 	a := fmt.Sprintf("-> %s:%d", n.Address.String(), cfg.NodesPort)
 	log.Printf("[%s]: connecting...\n", a)
 	defer fmt.Printf("[%s]: closed\n", a)
-	conn, err := net.Dial("tcp", n.Address.String()+":"+strconv.Itoa(cfg.NodesPort))
+	timeout := time.Duration(5 * time.Second)
+	conn, err := net.DialTimeout("tcp", n.Address.String()+":"+strconv.Itoa(cfg.NodesPort), timeout)
 	if err != nil {
+		log.Printf("[%s]: failed to connect: %v\n", a, err)
 		return
 	}
 	log.Printf("[%s]: connected\n", a)
@@ -136,8 +140,8 @@ func (n *Node) Connect() {
 		}
 		log.Printf("[%s]: sending ping...\n", a)
 		nonceBig, _ := rand.Int(rand.Reader, big.NewInt(int64(math.Pow(2, 62))))
-		nonce := nonceBig.Uint64()
-		msgPing := wire.NewMsgPing(nonce)
+		n.PingNonce = nonceBig.Uint64()
+		msgPing := wire.NewMsgPing(n.PingNonce)
 		cnt, err = wire.WriteMessageN(n.Conn, msgPing, cfg.Pver, cfg.Btcnet)
 		if err != nil {
 			log.Printf("[%s]: failed to write ping: %v\n", a, err)
@@ -196,10 +200,10 @@ genesis hash: 00000000ad3d3d6aa486313522fdd4328509feefe8c37ead2a609884c6cbab92
 // 	return nil
 // }
 
-func NodesRead() ([]*Node, error) {
+func NodesRead(filename string) ([]*Node, error) {
 	ret := make([]*Node, 0)
 	// read from json
-	fData, err := os.ReadFile(cfg.NodesDB)
+	fData, err := os.ReadFile(filename)
 	if err != nil {
 		return ret, err
 	}
@@ -209,7 +213,19 @@ func NodesRead() ([]*Node, error) {
 		return ret, err
 	}
 	for _, addr := range data {
-		ret = append(ret, &Node{Address: net.ParseIP(addr)})
+		// if port specified
+		if strings.Contains(addr, ":") {
+			spl := strings.Split(addr, ":")
+			addr = spl[0]
+		}
+		if addr == "" {
+			continue
+		}
+		ip := net.ParseIP(addr)
+		if ip == nil {
+			continue
+		}
+		ret = append(ret, &Node{Address: ip})
 	}
 
 	return ret, nil
