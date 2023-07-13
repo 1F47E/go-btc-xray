@@ -3,9 +3,7 @@ package main
 import (
 	"go-btc-downloader/pkg/client"
 	"log"
-	"math/rand"
 	"sync"
-	"time"
 )
 
 func main() {
@@ -25,12 +23,20 @@ func main() {
 	c := client.NewClient(nodes)
 	go c.UpdatePeers()
 
-	// connect to random node (debug)
-	rand.Seed(time.Now().UnixNano())
-	randInt := rand.Intn(len(nodes))
-	node := nodes[randInt]
 	wg := sync.WaitGroup{}
+
+	// connect to random node (debug)
+	// rand.Seed(time.Now().UnixNano())
+	// randInt := rand.Intn(len(nodes))
+	// node := nodes[randInt]
+	// wg.Add(1)
+	// go node.Connect()
+
+	// connect to all nodes
+	for _, node := range nodes {
+		go node.Connect()
+	}
+	// always block for now
 	wg.Add(1)
-	go node.Connect()
 	wg.Wait()
 }

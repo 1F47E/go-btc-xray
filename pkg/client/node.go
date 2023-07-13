@@ -48,7 +48,7 @@ func (n *Node) ListPeers() []Peer {
 }
 
 func (n *Node) Connect() {
-	a := fmt.Sprintf("%s:%d >>", n.Address.String(), cfg.NodesPort)
+	a := fmt.Sprintf("-> %s:%d", n.Address.String(), cfg.NodesPort)
 	log.Printf("[%s]: connecting...\n", a)
 	defer fmt.Printf("[%s]: closed\n", a)
 	conn, err := net.Dial("tcp", n.Address.String()+":"+strconv.Itoa(cfg.NodesPort))
@@ -62,6 +62,10 @@ func (n *Node) Connect() {
 
 	// ===== NEGOTIATION
 	// 1. sending version
+	if n.Conn == nil {
+		log.Printf("[%s]: disconnected\n", a)
+		return
+	}
 	msg, err := n.localVersionMsg()
 	if err != nil {
 		log.Printf("[%s]: failed to create version: %v", a, err)
@@ -79,6 +83,10 @@ func (n *Node) Connect() {
 	// if pver < wire.AddrV2Version {
 	// 	return nil
 	// }
+	if n.Conn == nil {
+		log.Printf("[%s]: disconnected\n", a)
+		return
+	}
 	log.Printf("[%s]: sending sendaddrv2...\n", a)
 	sendAddrMsg := wire.NewMsgSendAddrV2()
 	cnt, err = wire.WriteMessageN(n.Conn, sendAddrMsg, cfg.Pver, cfg.Btcnet)
@@ -89,6 +97,10 @@ func (n *Node) Connect() {
 	log.Printf("[%s]: OK. sent %d bytes\n", a, cnt)
 
 	// 3. send verAck
+	if n.Conn == nil {
+		log.Printf("[%s]: disconnected\n", a)
+		return
+	}
 	log.Printf("[%s]: sending verack...\n", a)
 	cnt, err = wire.WriteMessageN(n.Conn, wire.NewMsgVerAck(), cfg.Pver, cfg.Btcnet)
 	if err != nil {
@@ -100,6 +112,10 @@ func (n *Node) Connect() {
 	// ====== NEGOTIATION DONE
 
 	// ask for peers once
+	if n.Conn == nil {
+		log.Printf("[%s]: disconnected\n", a)
+		return
+	}
 	time.Sleep(1 * time.Second)
 	log.Printf("[%s]: sending getaddr...\n", a)
 	msgAddr := wire.NewMsgGetAddr()
@@ -114,6 +130,10 @@ func (n *Node) Connect() {
 	// send pings
 	time.Sleep(1 * time.Second)
 	for {
+		if n.Conn == nil {
+			log.Printf("[%s]: disconnected\n", a)
+			return
+		}
 		log.Printf("[%s]: sending ping...\n", a)
 		nonceBig, _ := rand.Int(rand.Reader, big.NewInt(int64(math.Pow(2, 62))))
 		nonce := nonceBig.Uint64()

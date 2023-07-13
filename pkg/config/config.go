@@ -17,6 +17,7 @@ const (
 type Config struct {
 	Network   Network
 	NodesDB   string
+	PeersDB   string
 	NodesPort int
 
 	DnsAddress string
@@ -42,6 +43,7 @@ func New() *Config {
 		cfg.Btcnet = wire.TestNet3
 		cfg.DnsTimeout = 10 * time.Second
 		cfg.NodesDB = "data/nodes_testnet.json"
+		cfg.PeersDB = "data/peers_testnet.json"
 		cfg.NodesPort = 18333
 		cfg.DnsSeeds = []string{
 			"testnet-seed.bitcoin.jonasschnelli.ch",
@@ -55,6 +57,7 @@ func New() *Config {
 
 		cfg.DnsTimeout = 5 * time.Second
 		cfg.NodesDB = "data/nodes_mainnet.json"
+		cfg.PeersDB = "data/peers_mainnet.json"
 		cfg.NodesPort = 8333
 		cfg.DnsSeeds = []string{
 			"dnsseed.emzy.de",

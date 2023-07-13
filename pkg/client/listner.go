@@ -9,7 +9,7 @@ import (
 )
 
 func (n *Node) connListen() {
-	a := fmt.Sprintf("%s:%d <<", n.Address.String(), cfg.NodesPort)
+	a := fmt.Sprintf("<- %s:%d", n.Address.String(), cfg.NodesPort)
 	defer func() {
 		n.Conn = nil
 		log.Printf("[%s]: closed\n", a)
