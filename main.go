@@ -3,7 +3,9 @@ package main
 import (
 	"go-btc-downloader/pkg/client"
 	"log"
+	"math/rand"
 	"sync"
+	"time"
 )
 
 func main() {
@@ -18,7 +20,10 @@ func main() {
 	if len(nodes) == 0 {
 		log.Fatalf("no nodes found")
 	}
-	node := nodes[0]
+	// get random node
+	rand.Seed(time.Now().UnixNano())
+	randInt := rand.Intn(len(nodes))
+	node := nodes[randInt]
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	node.Connect()

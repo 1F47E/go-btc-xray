@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"time"
+
+	"github.com/btcsuite/btcd/wire"
 )
 
 type Network string
@@ -20,15 +22,24 @@ type Config struct {
 	DnsAddress string
 	DnsTimeout time.Duration
 	DnsSeeds   []string
+
+	// Wire
+	Pver uint32
+
+	// var btcnet = wire.MainNet
+	Btcnet wire.BitcoinNet
 }
 
 func New() *Config {
 	cfg := &Config{
 		// var dnsAddress = "1.1.1.1:53" // cloudflare dns, 2x slower
 		DnsAddress: "8.8.8.8:53",
+		Pver:       wire.ProtocolVersion, // 70016
+		// Pver: 70013,
 	}
 	if os.Getenv("TESTNET") == "1" {
 		cfg.Network = NetworkTestnet
+		cfg.Btcnet = wire.TestNet3
 		cfg.DnsTimeout = 10 * time.Second
 		cfg.NodesDB = "data/nodes_testnet.json"
 		cfg.NodesPort = 18333
@@ -40,6 +51,8 @@ func New() *Config {
 		}
 	} else {
 		cfg.Network = NetworkMainnet
+		cfg.Btcnet = wire.MainNet
+
 		cfg.DnsTimeout = 5 * time.Second
 		cfg.NodesDB = "data/nodes_mainnet.json"
 		cfg.NodesPort = 8333
