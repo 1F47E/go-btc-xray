@@ -25,15 +25,37 @@ type Node struct {
 	Address net.IP   `json:"address"`
 	Conn    net.Conn `json:"-"`
 	nonce   uint64
+	peers   []Peer
+}
+
+func NewNode(address net.IP) *Node {
+	return &Node{
+		Address: address,
+		peers:   make([]Peer, 0),
+	}
+}
+
+func (n *Node) AddPeer(addr string) {
+	p := Peer{
+		Addr:    addr,
+		IsAlive: false,
+	}
+	n.peers = append(n.peers, p)
+}
+
+func (n *Node) ListPeers() []Peer {
+	return n.peers
 }
 
 func (n *Node) Connect() {
-	fmt.Printf("connecting to %v\n", n.Address.String())
+	a := fmt.Sprintf("%s:%d >>", n.Address.String(), cfg.NodesPort)
+	log.Printf("[%s]: connecting...\n", a)
+	defer fmt.Printf("[%s]: closed\n", a)
 	conn, err := net.Dial("tcp", n.Address.String()+":"+strconv.Itoa(cfg.NodesPort))
 	if err != nil {
 		return
 	}
-	fmt.Printf("connected to %v\n", n.Address.String())
+	log.Printf("[%s]: connected\n", a)
 	n.Conn = conn
 	// handle answers
 	go n.connListen()
@@ -42,62 +64,68 @@ func (n *Node) Connect() {
 	// 1. sending version
 	msg, err := n.localVersionMsg()
 	if err != nil {
-		log.Fatalf("failed to create version message: %v", err)
+		log.Printf("[%s]: failed to create version: %v", a, err)
+		return
 	}
+	log.Printf("[%s]: sending version...\n", a)
 	cnt, err := wire.WriteMessageN(n.Conn, msg, cfg.Pver, cfg.Btcnet)
 	if err != nil {
-		log.Fatalf("failed to write version: %v", err)
+		log.Printf("[%s]: failed to write version: %v", a, err)
+		return
 	}
-	fmt.Printf("bytes written: %v\n", cnt)
+	log.Printf("[%s]: OK. sent %d bytes\n", a, cnt)
 
 	// 2. send addr v2
 	// if pver < wire.AddrV2Version {
 	// 	return nil
 	// }
-	fmt.Println("sending addr v2")
+	log.Printf("[%s]: sending sendaddrv2...\n", a)
 	sendAddrMsg := wire.NewMsgSendAddrV2()
-	_, err = wire.WriteMessageN(n.Conn, sendAddrMsg, cfg.Pver, cfg.Btcnet)
+	cnt, err = wire.WriteMessageN(n.Conn, sendAddrMsg, cfg.Pver, cfg.Btcnet)
 	if err != nil {
-		log.Fatalf("failed to write sendaddrv2: %v", err)
+		log.Printf("[%s]: failed to write sendaddrv2: %v\n", a, err)
+		return
 	}
-	fmt.Println("OK")
+	log.Printf("[%s]: OK. sent %d bytes\n", a, cnt)
 
 	// 3. send verAck
-	fmt.Println("sending verack")
-	err = wire.WriteMessage(n.Conn, wire.NewMsgVerAck(), cfg.Pver, cfg.Btcnet)
+	log.Printf("[%s]: sending verack...\n", a)
+	cnt, err = wire.WriteMessageN(n.Conn, wire.NewMsgVerAck(), cfg.Pver, cfg.Btcnet)
 	if err != nil {
-		log.Fatalf("failed to write verack: %v", err)
+		log.Printf("[%s]: failed to write verack: %v\n", a, err)
+		return
 	}
-	fmt.Println("OK")
+	log.Printf("[%s]: OK. sent %d bytes\n", a, cnt)
 
 	// ====== NEGOTIATION DONE
 
-	// send pings
-	go func() {
-		for {
-
-			time.Sleep(10 * time.Second)
-			fmt.Println("sending ping")
-			nonceBig, _ := rand.Int(rand.Reader, big.NewInt(int64(math.Pow(2, 62))))
-			nonce := nonceBig.Uint64()
-			msgPing := wire.NewMsgPing(nonce)
-			cnt, err = wire.WriteMessageN(n.Conn, msgPing, cfg.Pver, cfg.Btcnet)
-			if err != nil {
-				log.Fatalf("failed to write ping: %v", err)
-			}
-			fmt.Printf("bytes written: %v\n", cnt)
-		}
-	}()
-
+	// ask for peers once
 	time.Sleep(1 * time.Second)
-	fmt.Println("sending getaddr")
+	log.Printf("[%s]: sending getaddr...\n", a)
 	msgAddr := wire.NewMsgGetAddr()
 	cnt, err = wire.WriteMessageN(n.Conn, msgAddr, cfg.Pver, cfg.Btcnet)
 	if err != nil {
 		// Log and handle the error
-		log.Printf("failed to write getaddr: %v", err)
+		log.Printf("[%s]: failed to write getaddr: %v\n", a, err)
+		return
 	}
-	fmt.Println("OK")
+	log.Printf("[%s]: OK. sent %d bytes\n", a, cnt)
+
+	// send pings
+	time.Sleep(1 * time.Second)
+	for {
+		log.Printf("[%s]: sending ping...\n", a)
+		nonceBig, _ := rand.Int(rand.Reader, big.NewInt(int64(math.Pow(2, 62))))
+		nonce := nonceBig.Uint64()
+		msgPing := wire.NewMsgPing(nonce)
+		cnt, err = wire.WriteMessageN(n.Conn, msgPing, cfg.Pver, cfg.Btcnet)
+		if err != nil {
+			log.Printf("[%s]: failed to write ping: %v\n", a, err)
+			return
+		}
+		log.Printf("[%s]: OK. sent %d bytes\n", a, cnt)
+		time.Sleep(1 * time.Minute)
+	}
 
 	// TODO: send genesis block
 	// blocks := make([][]byte, 0)

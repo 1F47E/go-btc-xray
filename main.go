@@ -20,12 +20,17 @@ func main() {
 	if len(nodes) == 0 {
 		log.Fatalf("no nodes found")
 	}
-	// get random node
+
+	// monitor new peers, report
+	c := client.NewClient(nodes)
+	go c.UpdatePeers()
+
+	// connect to random node (debug)
 	rand.Seed(time.Now().UnixNano())
 	randInt := rand.Intn(len(nodes))
 	node := nodes[randInt]
 	wg := sync.WaitGroup{}
 	wg.Add(1)
-	node.Connect()
+	go node.Connect()
 	wg.Wait()
 }

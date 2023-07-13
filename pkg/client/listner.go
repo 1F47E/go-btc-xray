@@ -9,6 +9,11 @@ import (
 )
 
 func (n *Node) connListen() {
+	a := fmt.Sprintf("%s:%d <<", n.Address.String(), cfg.NodesPort)
+	defer func() {
+		n.Conn = nil
+		log.Printf("[%s]: closed\n", a)
+	}()
 	// buf := make([]byte, 65536)
 	// bufReader := bufio.NewReader(n.Conn)
 	for {
@@ -26,7 +31,7 @@ func (n *Node) connListen() {
 		// cnt, msg, rawPayload, err := wire.ReadMessageWithEncodingN(n.Conn, cfg.Pver, cfg.Btcnet, wire.BaseEncoding)
 		if err != nil {
 			if err == io.EOF {
-				log.Fatal("[listner]: EOF, exit")
+				log.Printf("[%s]: EOF, exit\n", a)
 				return
 			}
 			// Since the protocol version is 70016 but we don't
@@ -36,54 +41,73 @@ func (n *Node) connListen() {
 			// compact blocks negotiation occurs after the
 			// handshake.
 			if err == wire.ErrUnknownMessage {
-				log.Println("[listner]: ERR: unknown message, ignoring")
+				log.Printf("[%s]: ERR: unknown message, ignoring\n", a)
 				continue
 			}
 
 			// log.Fatalf("Cant read buffer, error: %v\n", err)
-			log.Printf("[listner]: ERR: Cant read buffer, error: %v\n", err)
-			log.Printf("[listner]: ERR: bytes read: %v\n", cnt)
-			log.Printf("[listner]: ERR: msg: %v\n", msg)
-			log.Printf("[listner]: ERR: rawPayload: %v\n", rawPayload)
+			log.Printf("[%s]: ERR: Cant read buffer, error: %v\n", a, err)
+			log.Printf("[%s]: ERR: bytes read: %v\n", a, cnt)
+			log.Printf("[%s]: ERR: msg: %v\n", a, msg)
+			log.Printf("[%s]: ERR: rawPayload: %v\n", a, rawPayload)
 			continue
 		}
-		log.Printf("[listner]: Got message: %d bytes, cmd: %s rawPayload len: %d\n", cnt, msg.Command(), len(rawPayload))
+		log.Printf("[%s]: Got message: %d bytes, cmd: %s rawPayload len: %d\n", a, cnt, msg.Command(), len(rawPayload))
 		switch m := msg.(type) {
 		case *wire.MsgVersion:
-			log.Printf("[listner]: MsgVersion received from %v\n", n.Address.String())
-			log.Printf("[listner]: version: %v\n", m.ProtocolVersion)
-			log.Printf("[listner]: msg: %+v\n", m)
+			log.Printf("[%s]: MsgVersion received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: version: %v\n", a, m.ProtocolVersion)
+			log.Printf("[%s]: msg: %+v\n", a, m)
 		case *wire.MsgVerAck:
-			log.Printf("[listner]: MsgVerAck received from %v\n", n.Address.String())
-			log.Printf("[listner]: msg: %+v\n", m)
+			log.Printf("[%s]: MsgVerAck received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: msg: %+v\n", a, m)
 		case *wire.MsgPing:
-			log.Printf("[listner]: MsgPing received from %v\n", n.Address.String())
-			log.Printf("[listner]: nonce: %v\n", m.Nonce)
-			log.Printf("[listner]: msg: %+v\n", m)
+			log.Printf("[%s]: MsgPing received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: nonce: %v\n", a, m.Nonce)
+			log.Printf("[%s]: msg: %+v\n", a, m)
 		case *wire.MsgPong:
-			log.Printf("[listner]: MsgPong received from %v\n", n.Address.String())
-			log.Printf("[listner]: nonce: %v\n", m.Nonce)
-			log.Printf("[listner]: msg: %+v\n", m)
+			log.Printf("[%s]: MsgPong received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: nonce: %v\n", a, m.Nonce)
+			log.Printf("[%s]: msg: %+v\n", a, m)
+		case *wire.MsgAddr:
+			log.Printf("[%s]: MsgAddr received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: got %d addresses\n", a, len(m.AddrList))
+			for _, a := range m.AddrList {
+				addrStr := fmt.Sprintf("%v:%v", a.IP.String(), a.Port)
+				n.AddPeer(addrStr)
+			}
 		case *wire.MsgAddrV2:
-			log.Printf("[listner]: MsgAddrV2 received from %v\n", n.Address.String())
+			log.Printf("[%s]: MsgAddrV2 received from %v\n", a, n.Address.String())
 			// get list of addresses
 			// for _, addr := range m.AddrList {
 			// 	log.Printf("[listner]: addr: %+v\n", addr)
 			// }
-			log.Printf("[listner]: got %d addresses\n", len(m.AddrList))
+			log.Printf("[%s]: got %d addresses\n", a, len(m.AddrList))
+			for _, a := range m.AddrList {
+				addrStr := fmt.Sprintf("%v:%v", a.Addr.String(), a.Port)
+				n.AddPeer(addrStr)
+			}
+			// send ack
+			// mAck := wire.NewMsgSendAddrV2()
+			// mAck.(*wire.MsgSendAddrV2).AddrList = make([]*wire.NetAddressV2, 0)
+			// mAck.AddrList = make([]*wire.NetAddressV2, 0)
+			// mAck.AddrList = append(m.AddrList, m.AddrList...)
+
 		case *wire.MsgInv:
-			log.Printf("[listner]: MsgInv received from %v\n", n.Address.String())
-			log.Printf("[listner]: data: %+v\n", m.InvList)
+			log.Printf("[%s]: MsgInv received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: data: %d\n", a, len(m.InvList))
+			// TODO: answer on inv
+
 		case *wire.MsgFeeFilter:
-			log.Printf("[listner]: MsgFeeFilter received from %v\n", n.Address.String())
-			log.Printf("[listner]: fee: %v\n", m.MinFee)
+			log.Printf("[%s]: MsgFeeFilter received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: fee: %v\n", a, m.MinFee)
 		case *wire.MsgGetHeaders:
-			log.Printf("[listner]: MsgGetHeaders received from %v\n", n.Address.String())
-			log.Printf("[listner]: headers: %+v\n", m.BlockLocatorHashes)
+			log.Printf("[%s]: MsgGetHeaders received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: headers: %d\n", a, len(m.BlockLocatorHashes))
 
 		default:
-			log.Printf("[listner]: unknown message received from %v\n", n.Address.String())
-			log.Printf("[listner]: msg: %+v\n", m)
+			log.Printf("[%s]: unknown message received from %v\n", a, n.Address.String())
+			log.Printf("[%s]: msg: %+v\n", a, m)
 		}
 	}
 }
