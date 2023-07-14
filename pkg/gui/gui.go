@@ -15,18 +15,19 @@ import (
 
 var cfg = config.New()
 var mu sync.Mutex = sync.Mutex{}
-var data Data = Data{}
 
-const logsLimit = 20
+const limitLogs = 20
+const limitConn = 30
 
 type Data struct {
-	Connections []float64
+	Connections int
 	NodesTotal  uint
-	Logs        []string
 }
 
 type GUI struct {
+	connections    []float64
 	maxConnections int
+	logs           []string
 }
 
 func New() *GUI {
@@ -35,19 +36,22 @@ func New() *GUI {
 	}
 }
 
+// TODO: optimize
 func (g *GUI) Update(d Data) {
 	mu.Lock()
-	data = d
+	g.connections = append(g.connections, float64(d.Connections))
+	if len(g.connections) > limitConn {
+		g.connections = g.connections[len(g.connections)-limitConn:]
+	}
 	mu.Unlock()
 }
 
-// TODO: limit num of logs via stack
+// TODO: optimize
 func (g *GUI) Log(log string) {
 	mu.Lock()
-	data.Logs = append(data.Logs, log)
-	// pop over limit
-	if len(data.Logs) > logsLimit {
-		data.Logs = data.Logs[len(data.Logs)-logsLimit:]
+	g.logs = append(g.logs, log)
+	if len(g.logs) > limitLogs {
+		g.logs = g.logs[len(g.logs)-limitLogs:]
 	}
 	mu.Unlock()
 }
@@ -140,9 +144,7 @@ func (g *GUI) Start() {
 	// LOGS
 	p := widgets.NewParagraph()
 	p.WrapText = true
-	logs := strings.Join(data.Logs, "\n")
-	fmt.Printf("logs (%d): %s\n", len(data.Logs), logs)
-	p.Text = logs
+	p.Text = "Loading..."
 	p.Title = "Logs"
 
 	// construct the result grid
@@ -192,10 +194,10 @@ func (g *GUI) Start() {
 			}
 			// update logs
 
-			p.Text = strings.Join(data.Logs, "\n")
+			p.Text = strings.Join(g.logs, "\n")
 			// connections update
 			// slg.Sparklines[0].Data = sinFloat64B[tickerCount : tickerCount+100]
-			slg.Sparklines[0].Data = data.Connections
+			slg.Sparklines[0].Data = g.connections
 			// slg.Sparklines[1].Data = sinFloat64B[tickerCount : tickerCount+100]
 			// chartConn.Data[0] = sinFloat64A[2*tickerCount:]
 			// chartQueue.Data[0] = sinFloat64B[2*tickerCount:]

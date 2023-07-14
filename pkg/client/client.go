@@ -181,10 +181,8 @@ func (c *Client) nodesUpdater() {
 		}
 		mu.Unlock()
 		// updat edata to gui
-		connHistory := make([]float64, 0)
-		connHistory = append(connHistory, float64(connected))
 		c.guiCh <- gui.Data{
-			Connections: connHistory,
+			Connections: connections,
 		}
 		c.log.Infof("[NODES STAT]: total:%d, connected:%d(%d conn), dead:%d, good:%d\n", len(c.nodes), connected, connections, dead, len(good))
 		// report G count and memory used

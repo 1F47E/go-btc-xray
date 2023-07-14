@@ -2,14 +2,17 @@ package main
 
 import (
 	"fmt"
+	"go-btc-downloader/pkg/config"
 	"go-btc-downloader/pkg/dns"
 	"go-btc-downloader/pkg/gui"
 	"go-btc-downloader/pkg/logger"
+	"math/rand"
 	"sync"
 	"time"
 )
 
 func main() {
+	cfg := config.New()
 	guiCh := make(chan gui.Data, 100) // do not block sending gui updated
 	guiLogsCh := make(chan string, 100)
 	// TODO: make it optional with env flag
@@ -74,6 +77,17 @@ func main() {
 			for i := 0; i < 5; i++ {
 				cnt = cnt + i
 				guiLogsCh <- fmt.Sprintf("test log %d\n", cnt)
+			}
+		}
+	}()
+
+	// send fake conn data to debug
+	go func() {
+		for {
+			time.Sleep(100 * time.Millisecond)
+			rInt := rand.Intn(cfg.ConnectionsLimit)
+			guiCh <- gui.Data{
+				Connections: rInt,
 			}
 		}
 	}()
