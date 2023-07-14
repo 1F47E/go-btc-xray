@@ -68,22 +68,9 @@ func New() *GUI {
 	return &g
 }
 
-func (g *GUI) convertToSlice(l *list.List) []float64 {
-	// convert from linked list to list of float64
-	data := make([]float64, lenNodesChart)
-	i := 0
-	for e := l.Back(); e != nil; e = e.Prev() {
-		if i >= lenNodesChart {
-			break
-		}
-		idx := lenNodesChart - 1 - i
-		data[idx] = e.Value.(float64)
-		i++
-	}
-	return data
-}
-
-// TODO: optimize
+// update GUI data
+// in serial data (charts) we push new data to the linked lists first
+// and then construct slices from the linked lists
 func (g *GUI) Update(d Data) {
 	mu.Lock()
 	if d.Connections > 0 {
@@ -92,15 +79,15 @@ func (g *GUI) Update(d Data) {
 			g.dataConnections = g.dataConnections[len(g.dataConnections)-limitConn:]
 		}
 	}
-	// update nodes linked lists
+	// update nodes linked lists (in place)
 	updateNodeList(g.dataNodesTotalList, d.NodesTotal)
 	updateNodeList(g.dataNodesGoodList, d.NodesGood)
 	updateNodeList(g.dataNodesDeadList, d.NodesDead)
 
-	// convert to slices
-	g.dataNodesTotal = g.convertToSlice(g.dataNodesTotalList)
-	g.dataNodesGood = g.convertToSlice(g.dataNodesGoodList)
-	g.dataNodesDead = g.convertToSlice(g.dataNodesDeadList)
+	// update slices in place
+	updateSlice(g.dataNodesTotal, g.dataNodesTotalList)
+	updateSlice(g.dataNodesGood, g.dataNodesGoodList)
+	updateSlice(g.dataNodesDead, g.dataNodesDeadList)
 
 	mu.Unlock()
 }
@@ -112,6 +99,22 @@ func updateNodeList(l *list.List, data int) {
 	l.PushBack(float64(data))
 	if l.Len() > lenNodesChart {
 		l.Remove(l.Front())
+	}
+}
+
+func updateSlice(s []float64, l *list.List) {
+	i := 0
+	// loop from back to front and update slice accordingly
+	for e := l.Back(); e != nil; e = e.Prev() {
+		if i >= lenNodesChart {
+			break
+		}
+		idx := lenNodesChart - 1 - i
+		if idx >= len(s) {
+			break
+		}
+		s[idx] = e.Value.(float64)
+		i++
 	}
 }
 
