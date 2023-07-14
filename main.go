@@ -91,6 +91,37 @@ func main() {
 			}
 		}
 	}()
+	// send fake nodes total to debug
+	go func() {
+		for {
+			time.Sleep(100 * time.Millisecond)
+			rInt := rand.Intn(100)
+			guiCh <- gui.Data{
+				NodesTotal: 100 + rInt,
+			}
+		}
+	}()
+	// send good nodes to debug
+	go func() {
+		for {
+			time.Sleep(100 * time.Millisecond)
+			rInt := rand.Intn(100)
+			guiCh <- gui.Data{
+				NodesGood: 100 + rInt,
+			}
+		}
+	}()
+	// send dead nodes to debug
+	go func() {
+		for {
+			time.Sleep(100 * time.Millisecond)
+			rInt := rand.Intn(100)
+			guiCh <- gui.Data{
+				NodesDead: 100 + rInt,
+			}
+		}
+	}()
+
 	// debug
 	// random cut first 10
 	// rand shuffle nodes

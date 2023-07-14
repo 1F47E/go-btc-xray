@@ -1,11 +1,11 @@
 package gui
 
 import (
+	"container/list"
 	"fmt"
 	"go-btc-downloader/pkg/config"
 	"log"
 	"math"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,31 +18,113 @@ var mu sync.Mutex = sync.Mutex{}
 
 const limitLogs = 20
 const limitConn = 30
+const limitNodes = 100
+const lenNodesChart = 75
 
 type Data struct {
 	Connections int
-	NodesTotal  uint
+	NodesTotal  int
+	NodesGood   int
+	NodesDead   int
 }
 
 type GUI struct {
-	connections    []float64
-	maxConnections int
-	logs           []string
+	dataConnections []float64
+	dataNodesTotal  []float64
+	// linked list
+	dataNodesTotalLL *list.List
+	dataNodesGood    []float64
+	dataNodesDead    []float64
+	maxConnections   int
+	logs             []string
 }
 
 func New() *GUI {
-	return &GUI{
-		maxConnections: cfg.ConnectionsLimit,
+	g := GUI{
+		maxConnections:   cfg.ConnectionsLimit,
+		dataConnections:  make([]float64, limitConn),
+		dataNodesTotal:   make([]float64, lenNodesChart),
+		dataNodesTotalLL: list.New(),
+		dataNodesGood:    make([]float64, lenNodesChart),
+		dataNodesDead:    make([]float64, lenNodesChart),
 	}
+
+	// fake data debug
+	// k := 0
+	// for i := 0; i < lenNodesChart; i++ {
+	// 	step := 5
+	// 	if i%step == 0 {
+	// 		k = k + step
+	// 	}
+	// 	// update from the end
+	// 	idx := len(g.dataNodesTotal) - 1 - i
+	// 	g.dataNodesTotal[idx] = float64(i)
+	// }
+
+	return &g
+}
+
+func (g *GUI) convertToSlice(l *list.List) []float64 {
+	// convert from linked list to float64
+	data := make([]float64, lenNodesChart)
+	i := 0
+	for e := l.Front(); e != nil; e = e.Next() {
+		data[i] = e.Value.(float64)
+		i++
+	}
+	return data
 }
 
 // TODO: optimize
 func (g *GUI) Update(d Data) {
 	mu.Lock()
-	g.connections = append(g.connections, float64(d.Connections))
-	if len(g.connections) > limitConn {
-		g.connections = g.connections[len(g.connections)-limitConn:]
+	if d.Connections > 0 {
+		g.dataConnections = append(g.dataConnections, float64(d.Connections))
+		if len(g.dataConnections) > limitConn {
+			g.dataConnections = g.dataConnections[len(g.dataConnections)-limitConn:]
+		}
 	}
+	if d.NodesTotal > 0 {
+		// cut head first
+		// if len(g.dataNodesTotal) > limitNodes {
+		// 	g.dataNodesTotal = g.dataNodesTotal[len(g.dataNodesTotal)-limitNodes:]
+		// }
+		// g.dataNodesTotal = append(g.dataNodesTotal, float64(d.NodesTotal))
+		// push
+		// fmt.Printf("update total nodes with %d\n", d.NodesTotal)
+		g.dataNodesTotalLL.PushBack(float64(d.NodesTotal))
+		// remove from the front
+		if g.dataNodesTotalLL.Len() > lenNodesChart {
+			g.dataNodesTotalLL.Remove(g.dataNodesTotalLL.Front())
+		}
+		i := 0
+		// for e := g.dataNodesTotalLL.Front(); e != nil; e = e.Next() {
+		for e := g.dataNodesTotalLL.Back(); e != nil; e = e.Prev() {
+			if i >= lenNodesChart {
+				break
+			}
+			idx := lenNodesChart - 1 - i
+			g.dataNodesTotal[idx] = e.Value.(float64)
+			i++
+		}
+		// g.dataNodesTotal = g.convertToSlice(g.dataNodesTotalLL)
+		// fmt.Printf("list len: %d\n", g.dataNodesTotalLL.Len())
+	}
+	// if d.NodesGood > 0 {
+	// 	// cut head first
+	// 	if len(g.dataNodesGood) > limitNodes {
+	// 		g.dataNodesGood = g.dataNodesGood[len(g.dataNodesGood)-limitNodes:]
+	// 	}
+	// 	g.dataNodesGood = append(g.dataNodesGood, float64(d.NodesGood))
+	// }
+	//
+	// if d.NodesDead > 0 {
+	// 	// cut head first
+	// 	if len(g.dataNodesDead) > limitNodes {
+	// 		g.dataNodesDead = g.dataNodesDead[len(g.dataNodesDead)-limitNodes:]
+	// 	}
+	// 	g.dataNodesDead = append(g.dataNodesDead, float64(d.NodesDead))
+	// }
 	mu.Unlock()
 }
 
@@ -122,8 +204,24 @@ func (g *GUI) Start() {
 
 	// QUEUE
 	chartQueue := widgets.NewPlot()
-	chartQueue.ShowAxes = false
+	chartQueue.ShowAxes = true
 	chartQueue.Title = "Nodes"
+	// data is [][]float64
+	// bug
+
+	// chartQueue.Data = make([][]float64, 3)
+	// for i := range chartQueue.Data {
+	// 	chartQueue.Data[i] = make([]float64, 0)
+	// 	copy(chartQueue.Data[i], g.dataConnections)
+	// }
+
+	// chartQueue.Data[0] = g.dataConnections
+	// chartQueue.Data[1] = g.dataConnections
+	// chartQueue.Data[2] = g.dataConnections
+	// working
+	// chartQueue.Data = append(chartQueue.Data, make([]float64, lenNodesChart))
+	// chartQueue.Data = append(chartQueue.Data, g.dataNodesGood)
+	// chartQueue.Data = append(chartQueue.Data, g.dataNodesDead)
 	chartQueue.Data = append(chartQueue.Data, sinFloat64A)
 	chartQueue.Data = append(chartQueue.Data, sinFloat64B)
 	chartQueue.Data = append(chartQueue.Data, sinFloat64B)
@@ -172,7 +270,7 @@ func (g *GUI) Start() {
 	// UPDATER
 	tickerCount := 1
 	uiEvents := ui.PollEvents()
-	ticker := time.NewTicker(time.Second).C
+	ticker := time.NewTicker(200 * time.Millisecond)
 	for {
 		select {
 		case e := <-uiEvents:
@@ -185,25 +283,42 @@ func (g *GUI) Start() {
 				ui.Clear()
 				ui.Render(grid)
 			}
-		case <-ticker:
-			if tickerCount == 100 {
-				return
-			}
+		case <-ticker.C:
+			// if tickerCount == 100 {
+			// 	return
+			// }
 			for _, g := range gs {
 				g.Percent = (g.Percent + 3) % 100
 			}
 			// update logs
 
-			p.Text = strings.Join(g.logs, "\n")
+			// p.Text = strings.Join(g.logs, "\n")
+
 			// connections update
 			// slg.Sparklines[0].Data = sinFloat64B[tickerCount : tickerCount+100]
-			slg.Sparklines[0].Data = g.connections
+			slg.Sparklines[0].Data = g.dataConnections
 			// slg.Sparklines[1].Data = sinFloat64B[tickerCount : tickerCount+100]
 			// chartConn.Data[0] = sinFloat64A[2*tickerCount:]
 			// chartQueue.Data[0] = sinFloat64B[2*tickerCount:]
-			chartQueue.Data[0] = sinFloat64A[2*tickerCount:]
-			chartQueue.Data[1] = sinFloat64B[2*tickerCount:]
-			chartQueue.Data[2] = sinFloat64B[1*tickerCount:]
+
+			// chartQueue.Data[0] = g.dataNodesTotal
+			// chartQueue.Data[1] = g.dataNodesGood
+			// chartQueue.Data[2] = g.dataNodesDead
+
+			data := sinFloat64A[2*tickerCount:]
+			chartQueue.Data[0] = data
+			chartQueue.Data[1] = sinFloat64B[1*tickerCount:]
+			chartQueue.Data[2] = g.dataNodesTotal
+			msg := fmt.Sprintf("data chart len: %d, cap: %d\n", len(data), cap(data))
+			msg += fmt.Sprintf("dataNodesTotal: len %d, cap %d\n", len(g.dataNodesTotal), cap(g.dataNodesTotal))
+			msg += fmt.Sprintf("dataNodesTotalLL: %d\n", g.dataNodesTotalLL.Len())
+			msg += fmt.Sprintf("chartQueue.Data len: %d, cap: %d\n", len(chartQueue.Data), cap(chartQueue.Data))
+			msg += fmt.Sprintf("chartQueue.Data[0] len: %d, cap: %d\n", len(chartQueue.Data[0]), cap(chartQueue.Data[0]))
+			msg += fmt.Sprintf("chartQueue.Data[1] len: %d, cap: %d\n", len(chartQueue.Data[1]), cap(chartQueue.Data[1]))
+			msg += fmt.Sprintf("chartQueue.Data[2] len: %d, cap: %d\n", len(chartQueue.Data[2]), cap(chartQueue.Data[2]))
+			msg += fmt.Sprint("data: ", g.dataNodesTotal)
+			p.Text = msg
+			// chartQueue.Data[2] = sinFloat64A[1*tickerCount:]
 			// chartConn.LineColors[0] = ui.ColorMagenta
 			// chartQueue.LineColors[0] = ui.ColorYellow
 			// lc.Data[1] = sinFloat64B[2*tickerCount:]
