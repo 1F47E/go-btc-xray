@@ -42,7 +42,7 @@ func main() {
 	// nodes = nodes[:5]
 
 	// monitor new peers, report
-	go c.UpdateNodes()
+	go c.NodesUpdated()
 
 	wg := sync.WaitGroup{}
 

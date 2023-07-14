@@ -1,16 +1,12 @@
 package node
 
 import (
-	"crypto/rand"
 	"fmt"
+	"go-btc-downloader/pkg/cmd"
 	"go-btc-downloader/pkg/config"
 	"go-btc-downloader/pkg/logger"
-	"math"
-	"math/big"
 	"net"
 	"time"
-
-	wire "github.com/btcsuite/btcd/wire"
 )
 
 var cfg = config.New()
@@ -48,10 +44,6 @@ func (n *Node) EndpointSafe() string {
 	return fmt.Sprintf("[%s]:%d", n.addr.IP.String(), n.addr.Port)
 }
 
-func (n *Node) IsGood() bool {
-	return (!n.isDead && n.pingCount > 0)
-}
-
 func (n *Node) IsConnected() bool {
 	return n.conn != nil
 }
@@ -77,53 +69,36 @@ func (n *Node) Connect() {
 	go n.listen()
 
 	// ===== NEGOTIATION
+	// TODO: make it in a separate negotiation function
 	// 1. sending version
-	if n.conn == nil {
-		log.Debugf("%s disconnected\n", a)
-		return
-	}
-	msg, err := n.localVersionMsg()
-	if err != nil {
-		log.Debugf("%s failed to create version: %v", a, err)
-		return
-	}
 	log.Debugf("%s sending version...\n", a)
-	cnt, err := wire.WriteMessageN(n.conn, msg, cfg.Pver, cfg.Btcnet)
+	n.UpdateNonce()
+	err = cmd.SendVersion(n.conn, n.pingNonce)
 	if err != nil {
-		log.Debugf("[%s]: failed to write version: %v", a, err)
+		log.Errorf("[%s]: failed to write version: %v", a, err)
 		return
 	}
-	log.Debugf("%s OK. sent %d bytes\n", a, cnt)
+	log.Debugf("%s OK\n", a)
 
 	// 2. send addr v2
-	// if pver < wire.AddrV2Version {
-	// 	return nil
-	// }
-	if n.conn == nil {
-		log.Debugf("%s disconnected\n", a)
-		return
-	}
 	log.Debugf("%s sending sendaddrv2...\n", a)
-	sendAddrMsg := wire.NewMsgSendAddrV2()
-	cnt, err = wire.WriteMessageN(n.conn, sendAddrMsg, cfg.Pver, cfg.Btcnet)
+	err = cmd.SendAddrV2(n.conn)
 	if err != nil {
-		log.Debugf("%s failed to write sendaddrv2: %v\n", a, err)
+		log.Errorf("%s failed to write sendaddrv2: %v\n", a, err)
 		return
 	}
-	log.Debugf("%s OK. sent %d bytes\n", a, cnt)
+	log.Debugf("%s OK\n", a)
 
 	// 3. send verAck
-	if n.conn == nil {
-		log.Debugf("%s disconnected\n", a)
-		return
-	}
+	// TODO: read version first
+	time.Sleep(2 * time.Second)
 	log.Debugf("%s sending verack...\n", a)
-	cnt, err = wire.WriteMessageN(n.conn, wire.NewMsgVerAck(), cfg.Pver, cfg.Btcnet)
+	err = cmd.SendVerAck(n.conn)
 	if err != nil {
-		log.Debugf("%s failed to write verack: %v\n", a, err)
+		log.Errorf("%s failed to write verack: %v\n", a, err)
 		return
 	}
-	log.Debugf("%s OK. sent %d bytes\n", a, cnt)
+	log.Debugf("%s OK\n", a)
 
 	// ====== NEGOTIATION DONE
 	time.Sleep(1 * time.Second)
@@ -134,14 +109,12 @@ func (n *Node) Connect() {
 		return
 	}
 	log.Debugf("%s sending getaddr...\n", a)
-	msgAddr := wire.NewMsgGetAddr()
-	cnt, err = wire.WriteMessageN(n.conn, msgAddr, cfg.Pver, cfg.Btcnet)
+	err = cmd.SendGetAddr(n.conn)
 	if err != nil {
-		// Log and handle the error
-		log.Debugf("%s failed to write getaddr: %v\n", a, err)
+		log.Errorf("%s failed to write getaddr: %v\n", a, err)
 		return
 	}
-	log.Debugf("%s OK. sent %d bytes\n", a, cnt)
+	log.Debugf("%s OK\n", a)
 
 	// send pings
 	time.Sleep(1 * time.Second)
@@ -155,39 +128,13 @@ func (n *Node) Connect() {
 			return
 		}
 		log.Debugf("%s sending ping...\n", a)
-		nonceBig, _ := rand.Int(rand.Reader, big.NewInt(int64(math.Pow(2, 62))))
-		n.pingNonce = nonceBig.Uint64()
-		msgPing := wire.NewMsgPing(n.pingNonce)
-		cnt, err = wire.WriteMessageN(n.conn, msgPing, cfg.Pver, cfg.Btcnet)
+		n.UpdateNonce()
+		err = cmd.SendPing(n.conn, n.pingNonce)
 		if err != nil {
 			log.Debugf("%s failed to write ping: %v\n", a, err)
 			return
 		}
-		log.Debugf("%s OK. sent %d bytes\n", a, cnt)
+		log.Debugf("%s OK\n", a)
 		time.Sleep(1 * time.Minute)
 	}
-
-	// TODO: send genesis block
-	// blocks := make([][]byte, 0)
-	// genesisHash, err := hex.DecodeString("00000000ad3d3d6aa486313522fdd4328509feefe8c37ead2a609884c6cbab92")
-	// if err != nil {
-	// 	log.Fatalf("failed to decode genesis hash: %v", err)
-	// }
-	// blocks = append(blocks, genesisHash)
-
-	// var inventoryBuff bytes.Buffer
-	// binary.Write(&inventoryBuff, binary.LittleEndian, uint32(2))
-	// for _, block := range blocks {
-	// 	inventoryBuff.Write(block[:])
-	// }
-
-	// inventory := make([]byte, inventoryBuff.Len())
-	// _, err = inventoryBuff.Read(inventory)
-	// if err != nil {
-	// 	log.Fatalf("failed to read inventory: %v", err)
-	// }
-	// err = wire.WriteGetData(conn, inventory)
-	// if err != nil {
-	// 	log.Fatalf("failed to write getdata: %v", err)
-	// }
 }

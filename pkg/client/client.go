@@ -105,9 +105,14 @@ func (c *Client) Connector() {
 	}
 }
 
-func (c *Client) UpdateNodes() {
+func (c *Client) NodesUpdated() {
+	log.Debug("[NODES]: NodesUpdated started")
+	defer log.Debug("[NODES]: NodesUpdated exited")
 	for {
 		time.Sleep(1 * time.Second)
+		if len(c.nodes) == 0 {
+			log.Fatal("[NODES]: no nodes, exit")
+		}
 		log.Infof("[NODES]: update nodes. total now %d\n", len(c.nodes))
 
 		// filter good nodes
@@ -115,14 +120,12 @@ func (c *Client) UpdateNodes() {
 		mu.Lock()
 		toDelete := make([]string, 0)
 		for addr, node := range c.nodes {
-			if node.IsGood() {
-				good = append(good, addr)
-			}
-
 			if node.IsDead() {
 				log.Warnf("[NODES]: node %s is dead\n", addr)
 				toDelete = append(toDelete, addr)
+				continue
 			}
+			good = append(good, addr)
 		}
 		for _, addr := range toDelete {
 			delete(c.nodes, addr)
@@ -132,6 +135,11 @@ func (c *Client) UpdateNodes() {
 		log.Infof("[NODES]: good nodes %d/%d (%.2f%%)\n", len(good), len(c.nodes), perc)
 		if len(good) == 0 {
 			continue
+		}
+		if len(good) == len(c.nodes) {
+			log.Warn("[NODES]: all nodes are good, exit")
+			log.Fatal("exit") // TODO: graceful exit
+			return
 		}
 
 		// save to json file
