@@ -1,15 +1,20 @@
 package client
 
 import (
+	"go-btc-downloader/pkg/config"
 	"go-btc-downloader/pkg/logger"
 	"go-btc-downloader/pkg/node"
+	"go-btc-downloader/pkg/storage"
 	"net"
+	"os"
+	"runtime"
 	"sync"
 	"time"
 )
 
 var mu = sync.Mutex{}
 var log *logger.Logger = logger.New()
+var cfg = config.New()
 
 // batch of new addresses. not block the sented (listner) goroutine
 var newAddrCh = make(chan []string, 100)
@@ -98,7 +103,7 @@ func (c *Client) nodesListner() {
 func (c *Client) nodesConnector() {
 	log.Debug("[NODES CONNECTOR]: nodesConnector started")
 	defer log.Debug("[NODES CONNECTOR]: nodesConnector exited")
-	limit := 5 // connection pool
+	limit := cfg.ConnectionsLimit // connection pool
 	for {
 		time.Sleep(1 * time.Second)
 		connectedCnt := c.ConnectedNodesCnt()
@@ -127,6 +132,14 @@ func (c *Client) nodesConnector() {
 				go waitlist[i].Connect()
 			}
 		}
+		// exit if done
+		if len(waitlist) == 0 {
+			log.Warn("[NODES CONNECTOR]: no nodes to connect, exit")
+			for _, node := range c.nodes {
+				node.Disconnect()
+			}
+			os.Exit(0)
+		}
 	}
 }
 
@@ -142,14 +155,14 @@ func (c *Client) nodesUpdater() {
 		}
 
 		// filter good nodes
-		good := make([]string, 0)
+		good := make([]*node.Node, 0)
 		dead := 0
 		connected := 0
 		connections := 0
 		mu.Lock()
-		for addr, node := range c.nodes {
-			if node.IsHandshaked() {
-				good = append(good, addr)
+		for _, node := range c.nodes {
+			if node.IsGood() {
+				good = append(good, node)
 			}
 			if node.IsDead() {
 				dead++
@@ -163,21 +176,23 @@ func (c *Client) nodesUpdater() {
 		}
 		mu.Unlock()
 		log.Infof("[NODES STAT]: total:%d, connected:%d(%d conn), dead:%d, good:%d\n", len(c.nodes), connected, connections, dead, len(good))
+		// report G count and memory used
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		log.Debugf("[NODES STAT]: G:%d, MEM:%dKb\n", runtime.NumGoroutine(), m.Alloc/1024)
+
+		// save good to json file
+		if len(good) > 0 {
+			err := storage.Save(cfg.GoodNodesDB, good)
+			if err != nil {
+				log.Debugf("[NODES STAT]: failed to save nodes: %v\n", err)
+				continue
+			}
+
+			log.Infof("[NODES STAT]: saved %d node to %v\n", len(good), cfg.GoodNodesDB)
+		}
 	}
 }
-
-// save to json file
-// j, err := json.MarshalIndent(good, "", "  ")
-// if err != nil {
-// 	log.Debugf("[NODES]: failed to marshal nodes: %v\n", err)
-// 	continue
-// }
-// err = os.WriteFile(cfg.NodesDB, j, 0644)
-// if err != nil {
-// 	log.Debugf("[NODES]: failed to write nodes: %v\n", err)
-// 	continue
-// }
-// log.Debugf("[NODES]: saved %d node to %v\n", len(good), cfg.PeersDB)
 
 // func SeedScan() ([]*node.Node, error) {
 // 	nodes := make([]*node.Node, 0)

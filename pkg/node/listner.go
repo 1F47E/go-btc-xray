@@ -12,7 +12,7 @@ import (
 
 // listen to incoming messages
 func (n *Node) listen() {
-	a := fmt.Sprintf("◀︎ %s:", n.Endpoint())
+	a := fmt.Sprintf("◀︎ %s", n.Endpoint())
 	defer func() {
 		n.conn = nil
 		n.status = Disconnected

@@ -18,7 +18,6 @@ const (
 	New = iota
 	Connected
 	Disconnected
-	Handshaked
 	Dead
 )
 
@@ -28,6 +27,7 @@ type Node struct {
 	pingNonce uint64
 	pingCount uint8
 	status    Status
+	isGood    bool // handshake is OK
 	newAddrCh chan []string
 }
 
@@ -39,8 +39,10 @@ func NewNode(addr net.TCPAddr, newAddrCh chan []string) *Node {
 }
 
 func (n *Node) Disconnect() {
-	n.conn.Close()
-	n.conn = nil
+	if n.conn != nil {
+		n.conn.Close()
+		n.conn = nil
+	}
 	n.status = Disconnected
 }
 
@@ -61,8 +63,8 @@ func (n *Node) HasConnection() bool {
 	return n.conn != nil
 }
 
-func (n *Node) IsHandshaked() bool {
-	return n.status == Handshaked
+func (n *Node) IsGood() bool {
+	return n.isGood
 }
 
 func (n *Node) IP() net.IP {
@@ -79,14 +81,15 @@ func (n *Node) EndpointSafe() string {
 }
 
 func (n *Node) Connect() {
-	a := fmt.Sprintf("▶︎ %s:", n.IP())
+	a := fmt.Sprintf("▶︎ %s", n.IP())
 	log.Debugf("%s connecting...\n", a)
 	defer func() {
 		n.conn = nil
-		log.Warnf("%s closed\n", a)
+		n.status = Disconnected
+		log.Debugf("%s closed\n", a)
 	}()
 	timeout := time.Duration(5 * time.Second)
-	conn, err := net.DialTimeout("tcp", n.Endpoint(), timeout)
+	conn, err := net.DialTimeout("tcp", n.EndpointSafe(), timeout)
 	if err != nil {
 		n.status = Dead
 		log.Debugf("%s failed to connect: %v\n", a, err)
@@ -130,7 +133,7 @@ func (n *Node) Connect() {
 		return
 	}
 	log.Debugf("%s OK\n", a)
-	n.status = Handshaked
+	n.isGood = true
 
 	// ====== NEGOTIATION DONE
 	time.Sleep(1 * time.Second)

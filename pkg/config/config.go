@@ -15,10 +15,11 @@ const (
 )
 
 type Config struct {
-	Network   Network
-	NodesDB   string
-	PeersDB   string
-	NodesPort uint16
+	Network          Network
+	NodesDB          string
+	GoodNodesDB      string
+	NodesPort        uint16
+	ConnectionsLimit int
 
 	DnsAddress string
 	DnsTimeout time.Duration
@@ -37,13 +38,14 @@ func New() *Config {
 		DnsAddress: "8.8.8.8:53",
 		Pver:       wire.ProtocolVersion, // 70016
 		// Pver: 70013,
+		ConnectionsLimit: 420,
 	}
 	if os.Getenv("TESTNET") == "1" {
 		cfg.Network = NetworkTestnet
 		cfg.Btcnet = wire.TestNet3
 		cfg.DnsTimeout = 10 * time.Second
 		cfg.NodesDB = "data/nodes_testnet.json"
-		cfg.PeersDB = "data/peers_testnet.json"
+		cfg.GoodNodesDB = "data/nodes_good_testnet.json"
 		cfg.NodesPort = 18333
 		cfg.DnsSeeds = []string{
 			"testnet-seed.bitcoin.jonasschnelli.ch",
@@ -57,7 +59,7 @@ func New() *Config {
 
 		cfg.DnsTimeout = 5 * time.Second
 		cfg.NodesDB = "data/nodes_mainnet.json"
-		cfg.PeersDB = "data/peers_mainnet.json"
+		cfg.GoodNodesDB = "data/nodes_good_mainnet.json"
 		cfg.NodesPort = 8333
 		cfg.DnsSeeds = []string{
 			"dnsseed.emzy.de",
