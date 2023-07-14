@@ -1,19 +1,20 @@
-package client
+package node
 
 import (
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
+	"go-btc-downloader/pkg/config"
+	"go-btc-downloader/pkg/logger"
 	"math"
 	"math/big"
 	"net"
-	"os"
 	"time"
 
 	wire "github.com/btcsuite/btcd/wire"
-
-	"github.com/miekg/dns"
 )
+
+var cfg = config.New()
+var log *logger.Logger = logger.New()
 
 type Node struct {
 	Addr      net.TCPAddr `json:"address"`
@@ -21,10 +22,14 @@ type Node struct {
 	PingNonce uint64
 	PingCount uint8
 	IsDead    bool // mark to delete
+	newAddrCh chan []string
 }
 
-func NewNode(addr net.TCPAddr) *Node {
-	return &Node{Addr: addr}
+func NewNode(addr net.TCPAddr, newAddrCh chan []string) *Node {
+	return &Node{
+		Addr:      addr,
+		newAddrCh: newAddrCh,
+	}
 }
 
 func (n *Node) Endpoint() string {
@@ -61,7 +66,7 @@ func (n *Node) Connect() {
 	n.Conn = conn
 	// handle answers
 	// TODO: fix goroutine leak
-	go n.connListen()
+	go n.listen()
 
 	// ===== NEGOTIATION
 	// 1. sending version
@@ -203,92 +208,6 @@ genesis hash: 00000000ad3d3d6aa486313522fdd4328509feefe8c37ead2a609884c6cbab92
 // 	merkleRoot, _ := hex.DecodeString("3BA3EDFD7A7B12B27AC72C3E67768F617FC81BC3888A51323A9FB8AA4B1E5E4A")
 // 	return nil
 // }
-
-func NodesRead(filename string) ([]*Node, error) {
-	ret := make([]*Node, 0)
-	// read from json
-	fData, err := os.ReadFile(filename)
-	if err != nil {
-		return ret, err
-	}
-	var data []string
-	err = json.Unmarshal(fData, &data)
-	if err != nil {
-		return ret, err
-	}
-	for _, addr := range data {
-		a, err := net.ResolveTCPAddr("tcp", addr)
-		if err != nil {
-			log.Debug("failed to resolve addr: ", addr)
-			continue
-		}
-		ret = append(ret, &Node{Addr: *a})
-	}
-
-	return ret, nil
-}
-
-func SeedScan() ([]*Node, error) {
-	nodes := make([]*Node, 0)
-	log.Debug("Getting nodes from dns seeds... via ", cfg.DnsAddress)
-	now := time.Now()
-	if cfg.DnsSeeds == nil {
-		return nil, fmt.Errorf("no dns seeds")
-	}
-	for _, seed := range cfg.DnsSeeds {
-		m := new(dns.Msg)
-		m.SetQuestion(dns.Fqdn(seed), dns.TypeA)
-		c := new(dns.Client)
-		c.Net = "tcp"
-		c.Timeout = cfg.DnsTimeout
-		in, _, err := c.Exchange(m, cfg.DnsAddress)
-		if err != nil {
-			log.Errorf("Failed to get nodes from %v: %v\n", seed, err)
-			continue
-		}
-		if len(in.Answer) == 0 {
-			log.Errorf("No nodes found from %v\n", seed)
-		} else {
-			log.Infof("Got %v nodes from %v\n", len(in.Answer), seed)
-		}
-		// loop through dns records
-		for _, ans := range in.Answer {
-			// check that record is valid
-			if _, ok := ans.(*dns.A); !ok {
-				continue
-			}
-			record := ans.(*dns.A)
-			// check if already exists
-			for _, node := range nodes {
-				if node.Addr.IP.Equal(record.A) {
-					continue
-				}
-			}
-			n := Node{Addr: net.TCPAddr{IP: record.A, Port: int(cfg.NodesPort)}}
-			nodes = append(nodes, &n)
-		}
-	}
-	if len(nodes) == 0 {
-		return nil, fmt.Errorf("No nodes found")
-	}
-	log.Infof("Got %v nodes in %v\n", len(nodes), time.Since(now))
-
-	// save nodes as json
-	fData := make([]string, len(nodes))
-	for i, n := range nodes {
-		fData[i] = n.EndpointSafe() // [addr]:port for ipv6
-	}
-	fDataJson, err := json.MarshalIndent(fData, "", "  ")
-	if err != nil {
-		log.Fatalf("failed to marshal nodes: %v", err)
-	}
-	err = os.WriteFile(cfg.NodesDB, fDataJson, 0644)
-	if err != nil {
-		log.Fatalf("failed to write nodes: %v", err)
-	}
-	log.Infof("saved %v nodes to %v\n", len(nodes), cfg.NodesDB)
-	return nodes, nil
-}
 
 // localVersionMsg creates a version message that can be used to send to the
 // remote peer.
