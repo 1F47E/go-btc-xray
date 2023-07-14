@@ -15,11 +15,12 @@ func (n *Node) listen() {
 	a := fmt.Sprintf("◀︎ %s:", n.Endpoint())
 	defer func() {
 		n.conn = nil
+		n.status = Disconnected
 		log.Warnf("%s closed\n", a)
 	}()
 	for {
 		// exit on closed connection
-		if n.conn == nil {
+		if n.conn == nil || n.status != Connected {
 			return
 		}
 		fmt.Println()
@@ -54,13 +55,17 @@ func (n *Node) listen() {
 			log.Infof("%s MsgVersion received\n", a)
 			log.Debugf("%s version: %v\n", a, m.ProtocolVersion)
 			log.Debugf("%s msg: %+v\n", a, m)
+			// TODO: update node version
+
 		case *wire.MsgVerAck:
 			log.Infof("%s MsgVerAck received\n", a)
 			log.Debugf("%s msg: %+v\n", a, m)
+
 		case *wire.MsgPing:
 			log.Infof("%s MsgPing received\n", a)
 			log.Debugf("%s nonce: %v\n", a, m.Nonce)
 			log.Debugf("%s msg: %+v\n", a, m)
+
 		case *wire.MsgPong:
 			log.Infof("%s MsgPong received\n", a)
 			if m.Nonce == n.pingNonce {
@@ -70,6 +75,7 @@ func (n *Node) listen() {
 			} else {
 				log.Warnf("%s pong nonce mismatch, expected %v, got %v\n", a, n.pingNonce, m.Nonce)
 			}
+
 		case *wire.MsgAddr:
 			log.Infof("%s MsgAddr received\n", a)
 			log.Debugf("%s got %d addresses\n", a, len(m.AddrList))
@@ -78,6 +84,8 @@ func (n *Node) listen() {
 				batch[i] = fmt.Sprintf("[%s]:%d", a.IP.String(), a.Port)
 			}
 			n.newAddrCh <- batch
+			n.Disconnect()
+
 		case *wire.MsgAddrV2:
 			log.Infof("%s MsgAddrV2 received\n", a)
 			log.Debugf("%s got %d addresses\n", a, len(m.AddrList))
@@ -86,6 +94,7 @@ func (n *Node) listen() {
 				batch[i] = fmt.Sprintf("[%s]:%d", a.Addr.String(), a.Port)
 			}
 			n.newAddrCh <- batch
+			n.Disconnect()
 
 		case *wire.MsgInv:
 			log.Infof("%s MsgInv received\n", a)
@@ -95,6 +104,7 @@ func (n *Node) listen() {
 		case *wire.MsgFeeFilter:
 			log.Infof("%s MsgFeeFilter received\n", a)
 			log.Debugf("%s fee: %v\n", a, m.MinFee)
+
 		case *wire.MsgGetHeaders:
 			log.Infof("%s MsgGetHeaders received\n", a)
 			log.Debugf("%s headers: %d\n", a, len(m.BlockLocatorHashes))

@@ -12,12 +12,22 @@ import (
 var cfg = config.New()
 var log *logger.Logger = logger.New()
 
+type Status int
+
+const (
+	New = iota
+	Connected
+	Disconnected
+	Handshaked
+	Dead
+)
+
 type Node struct {
 	addr      net.TCPAddr
 	conn      net.Conn
 	pingNonce uint64
 	pingCount uint8
-	isDead    bool // mark to delete
+	status    Status
 	newAddrCh chan []string
 }
 
@@ -28,28 +38,48 @@ func NewNode(addr net.TCPAddr, newAddrCh chan []string) *Node {
 	}
 }
 
-func (n *Node) IP() net.IP {
-	return n.addr.IP
+func (n *Node) Disconnect() {
+	n.conn.Close()
+	n.conn = nil
+	n.status = Disconnected
+}
+
+func (n *Node) IsNew() bool {
+	return n.status == New
 }
 
 func (n *Node) IsDead() bool {
-	return n.isDead
+	return n.status == Dead
+}
+
+func (n *Node) IsConnected() bool {
+	return n.status == Connected && n.conn != nil
+}
+
+// debug
+func (n *Node) HasConnection() bool {
+	return n.conn != nil
+}
+
+func (n *Node) IsHandshaked() bool {
+	return n.status == Handshaked
+}
+
+func (n *Node) IP() net.IP {
+	return n.addr.IP
 }
 
 func (n *Node) Endpoint() string {
 	return fmt.Sprintf("%s:%d", n.addr.IP.String(), n.addr.Port)
 }
 
+// wrapper with brackets for ipv6
 func (n *Node) EndpointSafe() string {
 	return fmt.Sprintf("[%s]:%d", n.addr.IP.String(), n.addr.Port)
 }
 
-func (n *Node) IsConnected() bool {
-	return n.conn != nil
-}
-
 func (n *Node) Connect() {
-	a := fmt.Sprintf("▶︎ %s:", n.Endpoint())
+	a := fmt.Sprintf("▶︎ %s:", n.IP())
 	log.Debugf("%s connecting...\n", a)
 	defer func() {
 		n.conn = nil
@@ -58,12 +88,13 @@ func (n *Node) Connect() {
 	timeout := time.Duration(5 * time.Second)
 	conn, err := net.DialTimeout("tcp", n.Endpoint(), timeout)
 	if err != nil {
-		n.isDead = true
+		n.status = Dead
 		log.Debugf("%s failed to connect: %v\n", a, err)
 		return
 	}
 	log.Debugf("%s connected\n", a)
 	n.conn = conn
+	n.status = Connected
 	// handle answers
 	// exit on closed connection
 	go n.listen()
@@ -99,15 +130,12 @@ func (n *Node) Connect() {
 		return
 	}
 	log.Debugf("%s OK\n", a)
+	n.status = Handshaked
 
 	// ====== NEGOTIATION DONE
 	time.Sleep(1 * time.Second)
 
 	// ask for peers once
-	if n.conn == nil {
-		log.Debugf("%s disconnected\n", a)
-		return
-	}
 	log.Debugf("%s sending getaddr...\n", a)
 	err = cmd.SendGetAddr(n.conn)
 	if err != nil {

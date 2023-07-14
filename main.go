@@ -44,7 +44,7 @@ func main() {
 	// nodes = nodes[:5]
 
 	// monitor new peers, report
-	go c.NodesUpdated()
+	go c.Start()
 
 	wg := sync.WaitGroup{}
 
@@ -55,8 +55,6 @@ func main() {
 	// wg.Add(1)
 	// go node.Connect()
 
-	// connect to all nodes
-	go c.Connector()
 	// go c.NewNodesListner()
 	// always block for now
 	// exit := make(chan os.Signal, 1)

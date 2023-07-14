@@ -18,6 +18,7 @@ type Client struct {
 	nodes map[string]*node.Node
 }
 
+// initial nodes from DNS
 func NewClient(addrs []string) *Client {
 	nodes := make([]*node.Node, 0)
 	for _, addr := range addrs {
@@ -39,35 +40,12 @@ func NewClient(addrs []string) *Client {
 	return &c
 }
 
-func (c *Client) NodesCnt() int {
-	return len(c.nodes)
-}
-
 func (c *Client) Nodes() map[string]*node.Node {
 	return c.nodes
 }
 
-// TODO: run in batches + connect to the new nodes
-func (c *Client) AddrListner() {
-	for addrs := range newAddrCh {
-		log.Debugf("[NODES]: got batch %d new nodes\n", len(addrs))
-		mu.Lock()
-		for _, addr := range addrs {
-			tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
-			if err != nil {
-				log.Debugf("[NODES]: failed to resolve addr %s: %v\n", addr, err)
-				continue
-			}
-			// n := node.Node{Addr: *tcpAddr}
-			n := node.NewNode(*tcpAddr, newAddrCh)
-			// add only if new
-			addr := n.EndpointSafe()
-			if _, ok := c.nodes[addr]; !ok {
-				c.nodes[addr] = n
-			}
-		}
-		mu.Unlock()
-	}
+func (c *Client) NodesCnt() int {
+	return len(c.nodes)
 }
 
 // count connected nodes
@@ -83,8 +61,44 @@ func (c *Client) ConnectedNodesCnt() int {
 	return cnt
 }
 
-func (c *Client) Connector() {
-	limit := 5
+// ===== WORKERS
+
+func (c *Client) Start() {
+	go c.nodesListner()
+	go c.nodesConnector()
+	go c.nodesUpdater()
+}
+
+// listen for new nodes from the connected nodes
+func (c *Client) nodesListner() {
+	log.Debug("[NODES]: newNodesListner started")
+	defer log.Debug("[NODES]: newNodesListner exited")
+	for addrs := range newAddrCh {
+		log.Debugf("[NODES]: got batch %d new nodes\n", len(addrs))
+		mu.Lock()
+		for _, addr := range addrs {
+			// TODO: check for ip key first before resolving
+			tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
+			if err != nil {
+				log.Debugf("[NODES]: failed to resolve addr %s: %v\n", addr, err)
+				continue
+			}
+			n := node.NewNode(*tcpAddr, newAddrCh)
+			// add only if new
+			addr := n.EndpointSafe()
+			if _, ok := c.nodes[addr]; !ok {
+				c.nodes[addr] = n
+			}
+		}
+		mu.Unlock()
+	}
+}
+
+// Connect to the nodes with a limit of connection
+func (c *Client) nodesConnector() {
+	log.Debug("[NODES CONNECTOR]: nodesConnector started")
+	defer log.Debug("[NODES CONNECTOR]: nodesConnector exited")
+	limit := 5 // connection pool
 	for {
 		time.Sleep(1 * time.Second)
 		connectedCnt := c.ConnectedNodesCnt()
@@ -97,16 +111,15 @@ func (c *Client) Connector() {
 		waitlist := make([]*node.Node, 0)
 		mu.Lock()
 		for _, node := range c.nodes {
-			if node.IsConnected() {
-				continue
+			if node.IsNew() {
+				waitlist = append(waitlist, node)
 			}
-			waitlist = append(waitlist, node)
 		}
 		mu.Unlock()
-		log.Infof("[NODES]: %d/%d nodes connected\n", connectedCnt, limit)
+		log.Infof("[NODES CONNECTOR]: %d/%d nodes connected\n", connectedCnt, limit)
+		log.Infof("[NODES CONNECTOR]: %d nodes in waitlist\n", len(waitlist))
+		log.Infof("[NODES CONNECTOR]: connecting to %d nodes\n", left)
 		if left > 0 && len(waitlist) > 0 {
-			log.Infof("[NODES]: %d nodes in waitlist\n", len(waitlist))
-			log.Infof("[NODES]: connecting to %d nodes\n", left)
 			for i := 0; i <= left; i++ {
 				if i >= len(waitlist) {
 					break
@@ -117,52 +130,54 @@ func (c *Client) Connector() {
 	}
 }
 
-func (c *Client) NodesUpdated() {
-	log.Debug("[NODES]: NodesUpdated started")
-	defer log.Debug("[NODES]: NodesUpdated exited")
+// Get stats of all the nodes, filter good ones, save them.
+func (c *Client) nodesUpdater() {
+	log.Debug("[NODES STAT]: nodesUpdater started")
+	defer log.Debug("[NODES STAT]: nodesUpdater exited")
 	for {
 		time.Sleep(1 * time.Second)
 		if len(c.nodes) == 0 {
-			log.Fatal("[NODES]: no nodes, exit")
+			log.Warn("[NODES STAT]: no nodes, exit")
+			return
 		}
-		log.Infof("[NODES]: update nodes. total now %d\n", len(c.nodes))
 
 		// filter good nodes
 		good := make([]string, 0)
+		dead := 0
+		connected := 0
+		connections := 0
 		mu.Lock()
-		toDelete := make([]string, 0)
 		for addr, node := range c.nodes {
-			if node.IsDead() {
-				log.Warnf("[NODES]: node %s is dead\n", addr)
-				toDelete = append(toDelete, addr)
-				continue
+			if node.IsHandshaked() {
+				good = append(good, addr)
 			}
-			good = append(good, addr)
-		}
-		for _, addr := range toDelete {
-			delete(c.nodes, addr)
+			if node.IsDead() {
+				dead++
+			}
+			if node.IsConnected() {
+				connected++
+			}
+			if node.HasConnection() {
+				connections++
+			}
 		}
 		mu.Unlock()
-		perc := float64(len(good)) / float64(len(c.nodes)) * 100
-		log.Infof("[NODES]: good nodes %d/%d (%.2f%%)\n", len(good), len(c.nodes), perc)
-		if len(good) == 0 {
-			continue
-		}
-
-		// save to json file
-		// j, err := json.MarshalIndent(good, "", "  ")
-		// if err != nil {
-		// 	log.Debugf("[NODES]: failed to marshal nodes: %v\n", err)
-		// 	continue
-		// }
-		// err = os.WriteFile(cfg.NodesDB, j, 0644)
-		// if err != nil {
-		// 	log.Debugf("[NODES]: failed to write nodes: %v\n", err)
-		// 	continue
-		// }
-		// log.Debugf("[NODES]: saved %d node to %v\n", len(good), cfg.PeersDB)
+		log.Infof("[NODES STAT]: total:%d, connected:%d(%d conn), dead:%d, good:%d\n", len(c.nodes), connected, connections, dead, len(good))
 	}
 }
+
+// save to json file
+// j, err := json.MarshalIndent(good, "", "  ")
+// if err != nil {
+// 	log.Debugf("[NODES]: failed to marshal nodes: %v\n", err)
+// 	continue
+// }
+// err = os.WriteFile(cfg.NodesDB, j, 0644)
+// if err != nil {
+// 	log.Debugf("[NODES]: failed to write nodes: %v\n", err)
+// 	continue
+// }
+// log.Debugf("[NODES]: saved %d node to %v\n", len(good), cfg.PeersDB)
 
 // func SeedScan() ([]*node.Node, error) {
 // 	nodes := make([]*node.Node, 0)
