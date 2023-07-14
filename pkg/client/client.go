@@ -46,11 +46,12 @@ func (c *Client) AddrListner() {
 				log.Debugf("[NODES]: failed to resolve addr %s: %v\n", addr, err)
 				continue
 			}
-			n := node.Node{Addr: *tcpAddr}
+			// n := node.Node{Addr: *tcpAddr}
+			n := node.NewNode(*tcpAddr, newAddrCh)
 			// add only if new
 			addr := n.EndpointSafe()
 			if _, ok := c.nodes[addr]; !ok {
-				c.nodes[addr] = &n
+				c.nodes[addr] = n
 			}
 		}
 		mu.Unlock()
@@ -62,9 +63,6 @@ func (c *Client) ConnectedNodesCnt() int {
 	cnt := 0
 	mu.Lock()
 	for _, node := range c.nodes {
-		if node.IsDead {
-			continue
-		}
 		if node.IsConnected() {
 			cnt++
 		}
@@ -90,12 +88,6 @@ func (c *Client) Connector() {
 			if node.IsConnected() {
 				continue
 			}
-			if node.PingCount > 0 {
-				continue
-			}
-			if node.IsDead {
-				continue
-			}
 			waitlist = append(waitlist, node)
 		}
 		mu.Unlock()
@@ -115,7 +107,7 @@ func (c *Client) Connector() {
 
 func (c *Client) UpdateNodes() {
 	for {
-		time.Sleep(10 * time.Second)
+		time.Sleep(1 * time.Second)
 		log.Infof("[NODES]: update nodes. total now %d\n", len(c.nodes))
 
 		// filter good nodes
@@ -127,7 +119,7 @@ func (c *Client) UpdateNodes() {
 				good = append(good, addr)
 			}
 
-			if node.IsDead {
+			if node.IsDead() {
 				log.Warnf("[NODES]: node %s is dead\n", addr)
 				toDelete = append(toDelete, addr)
 			}
@@ -175,7 +167,8 @@ func NodesRead(filename string) ([]*node.Node, error) {
 			log.Debug("failed to resolve addr: ", addr)
 			continue
 		}
-		ret = append(ret, &node.Node{Addr: *a})
+		n := node.NewNode(*a, newAddrCh)
+		ret = append(ret, n)
 	}
 
 	return ret, nil
@@ -213,12 +206,13 @@ func SeedScan() ([]*node.Node, error) {
 			record := ans.(*dns.A)
 			// check if already exists
 			for _, node := range nodes {
-				if node.Addr.IP.Equal(record.A) {
+				if node.IP().Equal(record.A) {
 					continue
 				}
 			}
-			n := node.Node{Addr: net.TCPAddr{IP: record.A, Port: int(cfg.NodesPort)}}
-			nodes = append(nodes, &n)
+			a := net.TCPAddr{IP: record.A, Port: int(cfg.NodesPort)}
+			n := node.NewNode(a, newAddrCh)
+			nodes = append(nodes, n)
 		}
 	}
 	if len(nodes) == 0 {
