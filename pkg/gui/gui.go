@@ -92,34 +92,27 @@ func (g *GUI) Update(d Data) {
 			g.dataConnections = g.dataConnections[len(g.dataConnections)-limitConn:]
 		}
 	}
-	if d.NodesTotal > 0 {
-		// push to the back
-		g.dataNodesTotalList.PushBack(float64(d.NodesTotal))
-		// remove from the front
-		if g.dataNodesTotalList.Len() > lenNodesChart {
-			g.dataNodesTotalList.Remove(g.dataNodesTotalList.Front())
-		}
-		g.dataNodesTotal = g.convertToSlice(g.dataNodesTotalList)
-	}
-	if d.NodesGood > 0 {
-		// push to the back
-		g.dataNodesGoodList.PushBack(float64(d.NodesGood))
-		// remove from the front
-		if g.dataNodesGoodList.Len() > lenNodesChart {
-			g.dataNodesGoodList.Remove(g.dataNodesGoodList.Front())
-		}
-		g.dataNodesGood = g.convertToSlice(g.dataNodesGoodList)
-	}
-	if d.NodesDead > 0 {
-		// push to the back
-		g.dataNodesDeadList.PushBack(float64(d.NodesDead))
-		// remove from the front
-		if g.dataNodesDeadList.Len() > lenNodesChart {
-			g.dataNodesDeadList.Remove(g.dataNodesDeadList.Front())
-		}
-		g.dataNodesDead = g.convertToSlice(g.dataNodesDeadList)
-	}
+	// update nodes linked lists
+	updateNodeList(g.dataNodesTotalList, d.NodesTotal)
+	updateNodeList(g.dataNodesGoodList, d.NodesGood)
+	updateNodeList(g.dataNodesDeadList, d.NodesDead)
+
+	// convert to slices
+	g.dataNodesTotal = g.convertToSlice(g.dataNodesTotalList)
+	g.dataNodesGood = g.convertToSlice(g.dataNodesGoodList)
+	g.dataNodesDead = g.convertToSlice(g.dataNodesDeadList)
+
 	mu.Unlock()
+}
+
+func updateNodeList(l *list.List, data int) {
+	if data <= 0 {
+		return
+	}
+	l.PushBack(float64(data))
+	if l.Len() > lenNodesChart {
+		l.Remove(l.Front())
+	}
 }
 
 // TODO: optimize
