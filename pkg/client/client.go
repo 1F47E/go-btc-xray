@@ -157,30 +157,7 @@ func (c *Client) NodesUpdated() {
 	}
 }
 
-func NodesRead(filename string) ([]*node.Node, error) {
-	ret := make([]*node.Node, 0)
-	// read from json
-	fData, err := os.ReadFile(filename)
-	if err != nil {
-		return ret, err
-	}
-	var data []string
-	err = json.Unmarshal(fData, &data)
-	if err != nil {
-		return ret, err
-	}
-	for _, addr := range data {
-		a, err := net.ResolveTCPAddr("tcp", addr)
-		if err != nil {
-			log.Debug("failed to resolve addr: ", addr)
-			continue
-		}
-		n := node.NewNode(*a, newAddrCh)
-		ret = append(ret, n)
-	}
 
-	return ret, nil
-}
 
 func SeedScan() ([]*node.Node, error) {
 	nodes := make([]*node.Node, 0)
