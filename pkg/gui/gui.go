@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"go-btc-downloader/pkg/config"
 	"log"
-	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,8 +16,8 @@ import (
 var cfg = config.New()
 var mu sync.Mutex = sync.Mutex{}
 
-const limitLogs = 20
-const limitConn = 30
+const lenLogs = 20
+const lenConnChart = 30
 const lenNodesChart = 40
 
 type Data struct {
@@ -28,7 +28,21 @@ type Data struct {
 }
 
 type GUI struct {
-	dataConnections []float64
+	maxConnections int
+	// Info table
+	infoTotalNodes  int
+	infoGoodNodes   int
+	infoDeadNodes   int
+	infoQueueNodes  int
+	infoConnections int
+	infoMsgIn       int
+	infoMsgOut      int
+
+	// Connections chart
+	dataConnectionsList *list.List
+	dataConnections     []float64
+
+	// Nodes chart
 	// linked list to update
 	dataNodesTotalList *list.List
 	dataNodesGoodList  *list.List
@@ -37,95 +51,29 @@ type GUI struct {
 	dataNodesTotal []float64
 	dataNodesGood  []float64
 	dataNodesDead  []float64
-	maxConnections int
-	logs           []string
+
+	logsList *list.List
+	logs     []string
 }
 
 func New() *GUI {
 	g := GUI{
-		maxConnections:     cfg.ConnectionsLimit,
-		dataConnections:    make([]float64, limitConn),
+		maxConnections: cfg.ConnectionsLimit,
+
+		dataConnectionsList: list.New(),
+		dataConnections:     make([]float64, lenConnChart),
+
 		dataNodesTotalList: list.New(),
 		dataNodesGoodList:  list.New(),
 		dataNodesDeadList:  list.New(),
 		dataNodesTotal:     make([]float64, lenNodesChart),
 		dataNodesGood:      make([]float64, lenNodesChart),
 		dataNodesDead:      make([]float64, lenNodesChart),
+
+		logsList: list.New(),
+		logs:     make([]string, lenLogs),
 	}
-
-	// fake data debug
-	// k := 0
-	// for i := 0; i < lenNodesChart; i++ {
-	// 	step := 5
-	// 	if i%step == 0 {
-	// 		k = k + step
-	// 	}
-	// 	// update from the end
-	// 	idx := len(g.dataNodesTotal) - 1 - i
-	// 	g.dataNodesTotal[idx] = float64(i)
-	// }
-
 	return &g
-}
-
-// update GUI data
-// in serial data (charts) we push new data to the linked lists first
-// and then construct slices from the linked lists
-func (g *GUI) Update(d Data) {
-	mu.Lock()
-	if d.Connections > 0 {
-		g.dataConnections = append(g.dataConnections, float64(d.Connections))
-		if len(g.dataConnections) > limitConn {
-			g.dataConnections = g.dataConnections[len(g.dataConnections)-limitConn:]
-		}
-	}
-	// update nodes linked lists (in place)
-	updateNodeList(g.dataNodesTotalList, d.NodesTotal)
-	updateNodeList(g.dataNodesGoodList, d.NodesGood)
-	updateNodeList(g.dataNodesDeadList, d.NodesDead)
-
-	// update slices in place
-	updateSlice(g.dataNodesTotal, g.dataNodesTotalList)
-	updateSlice(g.dataNodesGood, g.dataNodesGoodList)
-	updateSlice(g.dataNodesDead, g.dataNodesDeadList)
-
-	mu.Unlock()
-}
-
-func updateNodeList(l *list.List, data int) {
-	if data <= 0 {
-		return
-	}
-	l.PushBack(float64(data))
-	if l.Len() > lenNodesChart {
-		l.Remove(l.Front())
-	}
-}
-
-func updateSlice(s []float64, l *list.List) {
-	i := 0
-	// loop from back to front and update slice accordingly
-	for e := l.Back(); e != nil; e = e.Prev() {
-		if i >= lenNodesChart {
-			break
-		}
-		idx := lenNodesChart - 1 - i
-		if idx >= len(s) {
-			break
-		}
-		s[idx] = e.Value.(float64)
-		i++
-	}
-}
-
-// TODO: optimize
-func (g *GUI) Log(log string) {
-	mu.Lock()
-	g.logs = append(g.logs, log)
-	if len(g.logs) > limitLogs {
-		g.logs = g.logs[len(g.logs)-limitLogs:]
-	}
-	mu.Unlock()
 }
 
 func (g *GUI) Start() {
@@ -133,16 +81,6 @@ func (g *GUI) Start() {
 		log.Fatalf("failed to initialize termui: %v", err)
 	}
 	defer tui.Close()
-
-	// fake data
-	sinFloat64A := (func() []float64 {
-		n := 400
-		data := make([]float64, n)
-		for i := range data {
-			data[i] = 1 + math.Sin(float64(i)/5)
-		}
-		return data
-	})()
 
 	// PROGRESS
 	g0 := widgets.NewGauge()
@@ -154,24 +92,24 @@ func (g *GUI) Start() {
 	g0.LabelStyle = tui.NewStyle(tui.ColorWhite)
 
 	// CONNECTIONS
-	sl := widgets.NewSparkline()
+	chartConn := widgets.NewSparkline()
 	// max connections
-	sl.MaxVal = float64(g.maxConnections)
-	sl.Data = sinFloat64A[:100]
-	sl.LineColor = tui.ColorMagenta
-	sl.TitleStyle.Fg = tui.ColorWhite
-	slg := widgets.NewSparklineGroup(sl)
-	slg.Title = "Connections"
+	chartConn.MaxVal = float64(g.maxConnections)
+	chartConn.Data = []float64{0}
+	chartConn.LineColor = tui.ColorMagenta
+	chartConn.TitleStyle.Fg = tui.ColorWhite
+	chartConnGroup := widgets.NewSparklineGroup(chartConn)
+	chartConnGroup.Title = "Connections"
 
 	// STATS
-	t1 := widgets.NewTable()
-	t1.RowSeparator = false
-	t1.FillRow = false
-	t1.RowStyles[1] = tui.NewStyle(tui.ColorGreen)
-	t1.RowStyles[2] = tui.NewStyle(tui.ColorRed)
-	t1.RowStyles[3] = tui.NewStyle(tui.ColorYellow)
-	t1.RowStyles[4] = tui.NewStyle(tui.ColorMagenta)
-	t1.Rows = [][]string{
+	stats := widgets.NewTable()
+	stats.RowSeparator = false
+	stats.FillRow = false
+	stats.RowStyles[1] = tui.NewStyle(tui.ColorGreen)
+	stats.RowStyles[2] = tui.NewStyle(tui.ColorRed)
+	stats.RowStyles[3] = tui.NewStyle(tui.ColorYellow)
+	stats.RowStyles[4] = tui.NewStyle(tui.ColorMagenta)
+	stats.Rows = [][]string{
 		{"Total nodes", "10000"},
 		{"Good nodes", "123"},
 		{"Dead nodes", "456"},
@@ -180,8 +118,8 @@ func (g *GUI) Start() {
 		{"Msg out", "123"},
 		{"Msg in", "50"},
 	}
-	t1.TextStyle = tui.NewStyle(tui.ColorWhite)
-	tui.Render(t1)
+	stats.TextStyle = tui.NewStyle(tui.ColorWhite)
+	tui.Render(stats)
 
 	// QUEUE
 	chartNodesQueue := widgets.NewPlot()
@@ -221,8 +159,8 @@ func (g *GUI) Start() {
 	grid.Set(
 		// conn + stats + nodes
 		tui.NewRow(1.0/2-1.0/5,
-			tui.NewCol(0.2, slg), // conn
-			tui.NewCol(0.2, t1),  // stats
+			tui.NewCol(0.2, chartConnGroup), // conn
+			tui.NewCol(0.2, stats),          // stats
 			tui.NewCol(0.2, chartNodesQueue),
 			tui.NewCol(0.2, chartNodesGood),
 			tui.NewCol(0.2, chartNodesDead),
@@ -258,12 +196,12 @@ func (g *GUI) Start() {
 			for _, g := range gs {
 				g.Percent = (g.Percent + 3) % 100
 			}
-			// update logs
 
-			// p.Text = strings.Join(g.logs, "\n")
+			// update logs
+			p.Text = strings.Join(g.logs, "\n")
 
 			// connections update
-			slg.Sparklines[0].Data = g.dataConnections
+			chartConnGroup.Sparklines[0].Data = g.dataConnections
 
 			// nodes chart
 			chartNodesQueue.Data[0] = g.dataNodesTotal
@@ -276,15 +214,102 @@ func (g *GUI) Start() {
 			g.updateTitle(chartNodesDead, "Dead")
 
 			// debug info
-			msg := fmt.Sprintf("dataNodesTotal: len %d, cap %d\n", len(g.dataNodesTotal), cap(g.dataNodesTotal))
-			msg += fmt.Sprintf("dataNodesTotalLL: %d\n", g.dataNodesTotalList.Len())
-			msg += fmt.Sprintf("chartQueue.Data len: %d, cap: %d\n", len(chartNodesQueue.Data), cap(chartNodesQueue.Data))
-			msg += fmt.Sprintf("chartQueue.Data[0] len: %d, cap: %d\n", len(chartNodesQueue.Data[0]), cap(chartNodesQueue.Data[0]))
-			msg += fmt.Sprint("data: ", g.dataNodesTotal)
-			p.Text = msg
+			// msg := fmt.Sprintf("dataNodesTotal: len %d, cap %d\n", len(g.dataNodesTotal), cap(g.dataNodesTotal))
+			// msg += fmt.Sprintf("dataNodesTotalLL: %d\n", g.dataNodesTotalList.Len())
+			// msg += fmt.Sprintf("chartQueue.Data len: %d, cap: %d\n", len(chartNodesQueue.Data), cap(chartNodesQueue.Data))
+			// msg += fmt.Sprintf("chartQueue.Data[0] len: %d, cap: %d\n", len(chartNodesQueue.Data[0]), cap(chartNodesQueue.Data[0]))
+			// msg += fmt.Sprintf("chartConn: len %d, cap %d\n", len(chartConnGroup.Sparklines[0].Data), cap(chartConnGroup.Sparklines[0].Data))
+			// msg += fmt.Sprintf("chartConn data len: %d, cap: %d\n", len(g.dataConnections), cap(g.dataConnections))
+			// msg += fmt.Sprint("data: ", g.dataConnections)
+			// p.Text = msg
 			tui.Render(grid)
 			tickerCount++
 		}
+	}
+}
+
+// update GUI data
+// in serial data (charts) we push new data to the linked lists first
+// and then construct slices from the linked lists
+func (g *GUI) Update(d Data) {
+	mu.Lock()
+	// update connection data
+	updateNodeList(g.dataConnectionsList, d.Connections, lenConnChart)
+	updateSlice(g.dataConnections, g.dataConnectionsList, lenConnChart)
+
+	// update nodes linked lists (in place)
+	updateNodeList(g.dataNodesTotalList, d.NodesTotal, lenNodesChart)
+	updateNodeList(g.dataNodesGoodList, d.NodesGood, lenNodesChart)
+	updateNodeList(g.dataNodesDeadList, d.NodesDead, lenNodesChart)
+
+	// update slices in place
+	updateSlice(g.dataNodesTotal, g.dataNodesTotalList, lenNodesChart)
+	updateSlice(g.dataNodesGood, g.dataNodesGoodList, lenNodesChart)
+	updateSlice(g.dataNodesDead, g.dataNodesDeadList, lenNodesChart)
+
+	mu.Unlock()
+}
+
+func updateNodeList(l *list.List, data int, limit int) {
+	if data <= 0 {
+		return
+	}
+	l.PushBack(float64(data))
+	if l.Len() > limit {
+		l.Remove(l.Front())
+	}
+}
+
+func updateSlice(s []float64, l *list.List, limit int) {
+	i := 0
+	// loop from back to front and update slice accordingly
+	for e := l.Back(); e != nil; e = e.Prev() {
+		if i >= limit {
+			break
+		}
+		idx := limit - 1 - i
+		if idx >= len(s) {
+			break
+		}
+		s[idx] = e.Value.(float64)
+		i++
+	}
+}
+
+func (g *GUI) Log(log string) {
+	mu.Lock()
+	updateLogsList(g.logsList, log, lenLogs)
+	updateLogSlice(g.logs, g.logsList, lenLogs)
+	// g.logs = append(g.logs, log)
+	// if len(g.logs) > lenLogs {
+	// 	g.logs = g.logs[len(g.logs)-lenLogs:]
+	// }
+	mu.Unlock()
+}
+
+func updateLogSlice(s []string, l *list.List, limit int) {
+	i := 0
+	// loop from back to front and update slice accordingly
+	for e := l.Back(); e != nil; e = e.Prev() {
+		if i >= limit {
+			break
+		}
+		idx := limit - 1 - i
+		if idx >= len(s) {
+			break
+		}
+		s[idx] = e.Value.(string)
+		i++
+	}
+}
+
+func updateLogsList(l *list.List, log string, limit int) {
+	if log == "" {
+		return
+	}
+	l.PushBack(log)
+	if l.Len() > limit {
+		l.Remove(l.Front())
 	}
 }
 
