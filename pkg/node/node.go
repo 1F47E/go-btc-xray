@@ -10,7 +10,7 @@ import (
 )
 
 var cfg = config.New()
-var log *logger.Logger = logger.New()
+var log *logger.Logger = logger.New(nil)
 
 type Status int
 
@@ -28,6 +28,7 @@ type Node struct {
 	pingCount uint8
 	status    Status
 	isGood    bool // handshake is OK
+	version   int32
 	newAddrCh chan []string
 }
 

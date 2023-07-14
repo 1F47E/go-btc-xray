@@ -38,7 +38,11 @@ func New() *Config {
 		DnsAddress: "8.8.8.8:53",
 		Pver:       wire.ProtocolVersion, // 70016
 		// Pver: 70013,
-		ConnectionsLimit: 420,
+	}
+	if os.Getenv("DEBGUG") == "1" {
+		cfg.ConnectionsLimit = 10
+	} else {
+		cfg.ConnectionsLimit = 100
 	}
 	if os.Getenv("TESTNET") == "1" {
 		cfg.Network = NetworkTestnet

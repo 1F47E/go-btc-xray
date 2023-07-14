@@ -1,16 +1,48 @@
 package main
 
 import (
-	"go-btc-downloader/pkg/client"
+	"fmt"
 	"go-btc-downloader/pkg/dns"
+	"go-btc-downloader/pkg/gui"
 	"go-btc-downloader/pkg/logger"
 	"sync"
+	"time"
 )
 
 func main() {
+	guiCh := make(chan gui.Data, 100) // do not block sending gui updated
+	guiLogsCh := make(chan string, 100)
+	// TODO: make it optional with env flag
+	g := gui.New()
+	go func() {
+		g.Start()
+
+		// fake data to init
+		// data := gui.Data{
+		// 	Connections: []float64{1, 2, 3, 4, 5},
+		// }
+		// g.Update(data)
+	}()
 	// ctx, cancel := context.WithCancel(context.Background())
 
-	log := logger.New()
+	log := logger.New(guiLogsCh)
+
+	// SCAN SEED NODES
+	go func() {
+		d := dns.New(log)
+		addrs, err := d.Scan()
+		if err != nil {
+			log.Fatalf("failed to scan nodes: %v", err)
+		}
+		// connect to first node
+		if len(addrs) == 0 {
+			log.Fatalf("no node addresses found")
+		}
+		log.Debugf("dns scan found %d nodes", len(addrs))
+	}()
+
+	// addrs := make([]string, 0)
+	// c := client.NewClient(log, addrs, guiCh)
 
 	// get from file
 	// cfg := config.New()
@@ -21,19 +53,30 @@ func main() {
 	// 	log.Fatalf("failed to read nodes: %v", err)
 	// }
 
-	// get from dns
-	addrs, err := dns.Scan()
-	if err != nil {
-		log.Fatalf("failed to scan nodes: %v", err)
-	}
+	// read and update gui data
+	go func() {
+		for d := range guiCh {
+			g.Update(d)
+		}
+	}()
+	// read logs chan
+	go func() {
+		for l := range guiLogsCh {
+			g.Log(l)
+		}
+	}()
 
-	// connect to first node
-	if len(addrs) == 0 {
-		log.Fatalf("no node addresses found")
-	}
-
-	c := client.NewClient(addrs)
-	log.Debugf("client inited with %d nodes\n", c.NodesCnt())
+	// send fake logs to debug
+	go func() {
+		cnt := 0
+		for {
+			time.Sleep(1 * time.Second)
+			for i := 0; i < 5; i++ {
+				cnt = cnt + i
+				guiLogsCh <- fmt.Sprintf("test log %d\n", cnt)
+			}
+		}
+	}()
 	// debug
 	// random cut first 10
 	// rand shuffle nodes
@@ -44,7 +87,7 @@ func main() {
 	// nodes = nodes[:5]
 
 	// monitor new peers, report
-	go c.Start()
+	// go c.Start()
 
 	wg := sync.WaitGroup{}
 

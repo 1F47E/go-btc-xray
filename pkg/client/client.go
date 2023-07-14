@@ -2,6 +2,7 @@ package client
 
 import (
 	"go-btc-downloader/pkg/config"
+	"go-btc-downloader/pkg/gui"
 	"go-btc-downloader/pkg/logger"
 	"go-btc-downloader/pkg/node"
 	"go-btc-downloader/pkg/storage"
@@ -13,31 +14,35 @@ import (
 )
 
 var mu = sync.Mutex{}
-var log *logger.Logger = logger.New()
+
 var cfg = config.New()
 
 // batch of new addresses. not block the sented (listner) goroutine
 var newAddrCh = make(chan []string, 100)
 
 type Client struct {
+	log   *logger.Logger
 	nodes map[string]*node.Node
+	guiCh chan gui.Data
 }
 
 // initial nodes from DNS
-func NewClient(addrs []string) *Client {
+func NewClient(log *logger.Logger, addrs []string, guiCh chan gui.Data) *Client {
+
+	c := Client{
+		log:   log,
+		nodes: make(map[string]*node.Node),
+	}
+
 	nodes := make([]*node.Node, 0)
 	for _, addr := range addrs {
 		tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
 		if err != nil {
-			log.Debugf("failed to resolve addr %s: %v\n", addr, err)
+			c.log.Debugf("failed to resolve addr %s: %v\n", addr, err)
 			continue
 		}
 		n := node.NewNode(*tcpAddr, newAddrCh)
 		nodes = append(nodes, n)
-	}
-
-	c := Client{
-		nodes: make(map[string]*node.Node),
 	}
 	for _, n := range nodes {
 		c.nodes[n.Endpoint()] = n
@@ -76,16 +81,16 @@ func (c *Client) Start() {
 
 // listen for new nodes from the connected nodes
 func (c *Client) nodesListner() {
-	log.Debug("[NODES]: newNodesListner started")
-	defer log.Debug("[NODES]: newNodesListner exited")
+	c.log.Debug("[NODES]: newNodesListner started")
+	defer c.log.Debug("[NODES]: newNodesListner exited")
 	for addrs := range newAddrCh {
-		log.Debugf("[NODES]: got batch %d new nodes\n", len(addrs))
+		c.log.Debugf("[NODES]: got batch %d new nodes\n", len(addrs))
 		mu.Lock()
 		for _, addr := range addrs {
 			// TODO: check for ip key first before resolving
 			tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
 			if err != nil {
-				log.Debugf("[NODES]: failed to resolve addr %s: %v\n", addr, err)
+				c.log.Debugf("[NODES]: failed to resolve addr %s: %v\n", addr, err)
 				continue
 			}
 			n := node.NewNode(*tcpAddr, newAddrCh)
@@ -101,8 +106,8 @@ func (c *Client) nodesListner() {
 
 // Connect to the nodes with a limit of connection
 func (c *Client) nodesConnector() {
-	log.Debug("[NODES CONNECTOR]: nodesConnector started")
-	defer log.Debug("[NODES CONNECTOR]: nodesConnector exited")
+	c.log.Debug("[NODES CONNECTOR]: nodesConnector started")
+	defer c.log.Debug("[NODES CONNECTOR]: nodesConnector exited")
 	limit := cfg.ConnectionsLimit // connection pool
 	for {
 		time.Sleep(1 * time.Second)
@@ -121,9 +126,9 @@ func (c *Client) nodesConnector() {
 			}
 		}
 		mu.Unlock()
-		log.Infof("[NODES CONNECTOR]: %d/%d nodes connected\n", connectedCnt, limit)
-		log.Infof("[NODES CONNECTOR]: %d nodes in waitlist\n", len(waitlist))
-		log.Infof("[NODES CONNECTOR]: connecting to %d nodes\n", left)
+		c.log.Infof("[NODES CONNECTOR]: %d/%d nodes connected\n", connectedCnt, limit)
+		c.log.Infof("[NODES CONNECTOR]: %d nodes in waitlist\n", len(waitlist))
+		c.log.Infof("[NODES CONNECTOR]: connecting to %d nodes\n", left)
 		if left > 0 && len(waitlist) > 0 {
 			for i := 0; i <= left; i++ {
 				if i >= len(waitlist) {
@@ -134,7 +139,7 @@ func (c *Client) nodesConnector() {
 		}
 		// exit if done
 		if len(waitlist) == 0 {
-			log.Warn("[NODES CONNECTOR]: no nodes to connect, exit")
+			c.log.Warn("[NODES CONNECTOR]: no nodes to connect, exit")
 			for _, node := range c.nodes {
 				node.Disconnect()
 			}
@@ -145,12 +150,12 @@ func (c *Client) nodesConnector() {
 
 // Get stats of all the nodes, filter good ones, save them.
 func (c *Client) nodesUpdater() {
-	log.Debug("[NODES STAT]: nodesUpdater started")
-	defer log.Debug("[NODES STAT]: nodesUpdater exited")
+	c.log.Debug("[NODES STAT]: nodesUpdater started")
+	defer c.log.Debug("[NODES STAT]: nodesUpdater exited")
 	for {
 		time.Sleep(1 * time.Second)
 		if len(c.nodes) == 0 {
-			log.Warn("[NODES STAT]: no nodes, exit")
+			c.log.Warn("[NODES STAT]: no nodes, exit")
 			return
 		}
 
@@ -175,28 +180,34 @@ func (c *Client) nodesUpdater() {
 			}
 		}
 		mu.Unlock()
-		log.Infof("[NODES STAT]: total:%d, connected:%d(%d conn), dead:%d, good:%d\n", len(c.nodes), connected, connections, dead, len(good))
+		// updat edata to gui
+		connHistory := make([]float64, 0)
+		connHistory = append(connHistory, float64(connected))
+		c.guiCh <- gui.Data{
+			Connections: connHistory,
+		}
+		c.log.Infof("[NODES STAT]: total:%d, connected:%d(%d conn), dead:%d, good:%d\n", len(c.nodes), connected, connections, dead, len(good))
 		// report G count and memory used
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
-		log.Debugf("[NODES STAT]: G:%d, MEM:%dKb\n", runtime.NumGoroutine(), m.Alloc/1024)
+		c.log.Debugf("[NODES STAT]: G:%d, MEM:%dKb\n", runtime.NumGoroutine(), m.Alloc/1024)
 
 		// save good to json file
 		if len(good) > 0 {
 			err := storage.Save(cfg.GoodNodesDB, good)
 			if err != nil {
-				log.Debugf("[NODES STAT]: failed to save nodes: %v\n", err)
+				c.log.Debugf("[NODES STAT]: failed to save nodes: %v\n", err)
 				continue
 			}
 
-			log.Infof("[NODES STAT]: saved %d node to %v\n", len(good), cfg.GoodNodesDB)
+			c.log.Infof("[NODES STAT]: saved %d node to %v\n", len(good), cfg.GoodNodesDB)
 		}
 	}
 }
 
 // func SeedScan() ([]*node.Node, error) {
 // 	nodes := make([]*node.Node, 0)
-// 	log.Debug("Getting nodes from dns seeds... via ", cfg.DnsAddress)
+// 	c.log.Debug("Getting nodes from dns seeds... via ", cfg.DnsAddress)
 // 	now := time.Now()
 // 	if cfg.DnsSeeds == nil {
 // 		return nil, fmt.Errorf("no dns seeds")
@@ -209,13 +220,13 @@ func (c *Client) nodesUpdater() {
 // 		c.Timeout = cfg.DnsTimeout
 // 		in, _, err := c.Exchange(m, cfg.DnsAddress)
 // 		if err != nil {
-// 			log.Errorf("Failed to get nodes from %v: %v\n", seed, err)
+// 			c.log.Errorf("Failed to get nodes from %v: %v\n", seed, err)
 // 			continue
 // 		}
 // 		if len(in.Answer) == 0 {
-// 			log.Errorf("No nodes found from %v\n", seed)
+// 			c.log.Errorf("No nodes found from %v\n", seed)
 // 		} else {
-// 			log.Infof("Got %v nodes from %v\n", len(in.Answer), seed)
+// 			c.log.Infof("Got %v nodes from %v\n", len(in.Answer), seed)
 // 		}
 // 		// loop through dns records
 // 		for _, ans := range in.Answer {
@@ -238,7 +249,7 @@ func (c *Client) nodesUpdater() {
 // 	if len(nodes) == 0 {
 // 		return nil, fmt.Errorf("No nodes found")
 // 	}
-// 	log.Infof("Got %v nodes in %v\n", len(nodes), time.Since(now))
+// 	c.log.Infof("Got %v nodes in %v\n", len(nodes), time.Since(now))
 
 // 	// save nodes as json
 // 	fData := make([]string, len(nodes))
@@ -247,12 +258,12 @@ func (c *Client) nodesUpdater() {
 // 	}
 // 	fDataJson, err := json.MarshalIndent(fData, "", "  ")
 // 	if err != nil {
-// 		log.Fatalf("failed to marshal nodes: %v", err)
+// 		c.log.Fatalf("failed to marshal nodes: %v", err)
 // 	}
 // 	err = os.WriteFile(cfg.NodesDB, fDataJson, 0644)
 // 	if err != nil {
-// 		log.Fatalf("failed to write nodes: %v", err)
+// 		c.log.Fatalf("failed to write nodes: %v", err)
 // 	}
-// 	log.Infof("saved %v nodes to %v\n", len(nodes), cfg.NodesDB)
+// 	c.log.Infof("saved %v nodes to %v\n", len(nodes), cfg.NodesDB)
 // 	return nodes, nil
 // }

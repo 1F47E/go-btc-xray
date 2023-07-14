@@ -55,7 +55,7 @@ func (n *Node) listen() {
 			log.Infof("%s MsgVersion received\n", a)
 			log.Debugf("%s version: %v\n", a, m.ProtocolVersion)
 			log.Debugf("%s msg: %+v\n", a, m)
-			// TODO: update node version
+			n.version = m.ProtocolVersion
 
 		case *wire.MsgVerAck:
 			log.Infof("%s MsgVerAck received\n", a)

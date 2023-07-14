@@ -5,30 +5,58 @@ import (
 	"fmt"
 	"go-btc-downloader/pkg/config"
 	"go-btc-downloader/pkg/logger"
+	"time"
 
 	"github.com/miekg/dns"
 )
 
 var cfg = config.New()
-var log *logger.Logger = logger.New()
 
-func Scan() ([]string, error) {
-	ret := make([]string, 0)
-	if cfg.DnsSeeds == nil {
-		return nil, fmt.Errorf("no dns seeds")
+type DNS struct {
+	log       *logger.Logger
+	dnsSeeds  []string
+	dnsServer string
+	timeout   time.Duration
+}
+
+func New(log *logger.Logger) *DNS {
+	// check config vars
+	if cfg.DnsSeeds == nil || cfg.DnsAddress == "" || cfg.DnsTimeout == 0 {
+		log.Fatal("dns config is not set")
 	}
-	for _, seed := range cfg.DnsSeeds {
+	return &DNS{
+		log:       log,
+		dnsSeeds:  cfg.DnsSeeds,
+		dnsServer: cfg.DnsAddress,
+		timeout:   cfg.DnsTimeout,
+	}
+}
+
+func (d *DNS) Scan() ([]string, error) {
+	for {
+		d.log.Info("scanning dns seeds")
+		time.Sleep(1 * time.Second)
+		d.log.Debugf("dns seeds: %v", d.dnsSeeds)
+		time.Sleep(1 * time.Second)
+		d.log.Warn("scanning dns seeds test warning")
+		time.Sleep(1 * time.Second)
+		d.log.Error("scanning dns seeds test error")
+		time.Sleep(1 * time.Second)
+	}
+	return nil, nil
+	ret := make([]string, 0)
+	for _, seed := range d.dnsSeeds {
 		m := new(dns.Msg)
 		m.SetQuestion(dns.Fqdn(seed), dns.TypeA)
 		c := new(dns.Client)
 		c.Net = "tcp"
 		c.Timeout = cfg.DnsTimeout
-		in, _, err := c.Exchange(m, cfg.DnsAddress)
+		in, _, err := c.Exchange(m, d.dnsServer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get nodes from %v: %v", seed, err)
 		}
 		if len(in.Answer) == 0 {
-			log.Warnf("no nodes found from %v", seed)
+			d.log.Warnf("no nodes found from %v", seed)
 			continue
 		}
 		// loop through dns records
@@ -40,7 +68,7 @@ func Scan() ([]string, error) {
 			addr := fmt.Sprintf("[%s]:%d", ans.(*dns.A).A.String(), cfg.NodesPort)
 			ret = append(ret, addr)
 		}
-		log.Infof("got %v nodes from %v", len(in.Answer), seed)
+		d.log.Infof("got %v nodes from %v", len(in.Answer), seed)
 	}
 	return ret, nil
 }
