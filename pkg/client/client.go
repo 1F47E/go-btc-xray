@@ -1,21 +1,14 @@
 package client
 
 import (
-	"encoding/json"
-	"fmt"
-	"go-btc-downloader/pkg/config"
 	"go-btc-downloader/pkg/logger"
 	"go-btc-downloader/pkg/node"
 	"net"
-	"os"
 	"sync"
 	"time"
-
-	"github.com/miekg/dns"
 )
 
 var mu = sync.Mutex{}
-var cfg = config.New()
 var log *logger.Logger = logger.New()
 
 // batch of new addresses. not block the sented (listner) goroutine
@@ -25,7 +18,18 @@ type Client struct {
 	nodes map[string]*node.Node
 }
 
-func NewClient(nodes []*node.Node) *Client {
+func NewClient(addrs []string) *Client {
+	nodes := make([]*node.Node, 0)
+	for _, addr := range addrs {
+		tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
+		if err != nil {
+			log.Debugf("failed to resolve addr %s: %v\n", addr, err)
+			continue
+		}
+		n := node.NewNode(*tcpAddr, newAddrCh)
+		nodes = append(nodes, n)
+	}
+
 	c := Client{
 		nodes: make(map[string]*node.Node),
 	}
@@ -157,67 +161,65 @@ func (c *Client) NodesUpdated() {
 	}
 }
 
+// func SeedScan() ([]*node.Node, error) {
+// 	nodes := make([]*node.Node, 0)
+// 	log.Debug("Getting nodes from dns seeds... via ", cfg.DnsAddress)
+// 	now := time.Now()
+// 	if cfg.DnsSeeds == nil {
+// 		return nil, fmt.Errorf("no dns seeds")
+// 	}
+// 	for _, seed := range cfg.DnsSeeds {
+// 		m := new(dns.Msg)
+// 		m.SetQuestion(dns.Fqdn(seed), dns.TypeA)
+// 		c := new(dns.Client)
+// 		c.Net = "tcp"
+// 		c.Timeout = cfg.DnsTimeout
+// 		in, _, err := c.Exchange(m, cfg.DnsAddress)
+// 		if err != nil {
+// 			log.Errorf("Failed to get nodes from %v: %v\n", seed, err)
+// 			continue
+// 		}
+// 		if len(in.Answer) == 0 {
+// 			log.Errorf("No nodes found from %v\n", seed)
+// 		} else {
+// 			log.Infof("Got %v nodes from %v\n", len(in.Answer), seed)
+// 		}
+// 		// loop through dns records
+// 		for _, ans := range in.Answer {
+// 			// check that record is valid
+// 			if _, ok := ans.(*dns.A); !ok {
+// 				continue
+// 			}
+// 			record := ans.(*dns.A)
+// 			// check if already exists
+// 			for _, node := range nodes {
+// 				if node.IP().Equal(record.A) {
+// 					continue
+// 				}
+// 			}
+// 			a := net.TCPAddr{IP: record.A, Port: int(cfg.NodesPort)}
+// 			n := node.NewNode(a, newAddrCh)
+// 			nodes = append(nodes, n)
+// 		}
+// 	}
+// 	if len(nodes) == 0 {
+// 		return nil, fmt.Errorf("No nodes found")
+// 	}
+// 	log.Infof("Got %v nodes in %v\n", len(nodes), time.Since(now))
 
-
-func SeedScan() ([]*node.Node, error) {
-	nodes := make([]*node.Node, 0)
-	log.Debug("Getting nodes from dns seeds... via ", cfg.DnsAddress)
-	now := time.Now()
-	if cfg.DnsSeeds == nil {
-		return nil, fmt.Errorf("no dns seeds")
-	}
-	for _, seed := range cfg.DnsSeeds {
-		m := new(dns.Msg)
-		m.SetQuestion(dns.Fqdn(seed), dns.TypeA)
-		c := new(dns.Client)
-		c.Net = "tcp"
-		c.Timeout = cfg.DnsTimeout
-		in, _, err := c.Exchange(m, cfg.DnsAddress)
-		if err != nil {
-			log.Errorf("Failed to get nodes from %v: %v\n", seed, err)
-			continue
-		}
-		if len(in.Answer) == 0 {
-			log.Errorf("No nodes found from %v\n", seed)
-		} else {
-			log.Infof("Got %v nodes from %v\n", len(in.Answer), seed)
-		}
-		// loop through dns records
-		for _, ans := range in.Answer {
-			// check that record is valid
-			if _, ok := ans.(*dns.A); !ok {
-				continue
-			}
-			record := ans.(*dns.A)
-			// check if already exists
-			for _, node := range nodes {
-				if node.IP().Equal(record.A) {
-					continue
-				}
-			}
-			a := net.TCPAddr{IP: record.A, Port: int(cfg.NodesPort)}
-			n := node.NewNode(a, newAddrCh)
-			nodes = append(nodes, n)
-		}
-	}
-	if len(nodes) == 0 {
-		return nil, fmt.Errorf("No nodes found")
-	}
-	log.Infof("Got %v nodes in %v\n", len(nodes), time.Since(now))
-
-	// save nodes as json
-	fData := make([]string, len(nodes))
-	for i, n := range nodes {
-		fData[i] = n.EndpointSafe() // [addr]:port for ipv6
-	}
-	fDataJson, err := json.MarshalIndent(fData, "", "  ")
-	if err != nil {
-		log.Fatalf("failed to marshal nodes: %v", err)
-	}
-	err = os.WriteFile(cfg.NodesDB, fDataJson, 0644)
-	if err != nil {
-		log.Fatalf("failed to write nodes: %v", err)
-	}
-	log.Infof("saved %v nodes to %v\n", len(nodes), cfg.NodesDB)
-	return nodes, nil
-}
+// 	// save nodes as json
+// 	fData := make([]string, len(nodes))
+// 	for i, n := range nodes {
+// 		fData[i] = n.EndpointSafe() // [addr]:port for ipv6
+// 	}
+// 	fDataJson, err := json.MarshalIndent(fData, "", "  ")
+// 	if err != nil {
+// 		log.Fatalf("failed to marshal nodes: %v", err)
+// 	}
+// 	err = os.WriteFile(cfg.NodesDB, fDataJson, 0644)
+// 	if err != nil {
+// 		log.Fatalf("failed to write nodes: %v", err)
+// 	}
+// 	log.Infof("saved %v nodes to %v\n", len(nodes), cfg.NodesDB)
+// 	return nodes, nil
+// }

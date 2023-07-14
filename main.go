@@ -2,6 +2,7 @@ package main
 
 import (
 	"go-btc-downloader/pkg/client"
+	"go-btc-downloader/pkg/dns"
 	"go-btc-downloader/pkg/logger"
 	"sync"
 )
@@ -21,17 +22,17 @@ func main() {
 	// }
 
 	// get from dns
-	nodes, err := client.SeedScan()
+	addrs, err := dns.Scan()
 	if err != nil {
 		log.Fatalf("failed to scan nodes: %v", err)
 	}
 
 	// connect to first node
-	if len(nodes) == 0 {
-		log.Fatalf("no nodes found")
+	if len(addrs) == 0 {
+		log.Fatalf("no node addresses found")
 	}
 
-	c := client.NewClient(nodes)
+	c := client.NewClient(addrs)
 	// debug
 	// random cut first 10
 	// rand shuffle nodes
