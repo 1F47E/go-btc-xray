@@ -39,6 +39,14 @@ func NewClient(addrs []string) *Client {
 	return &c
 }
 
+func (c *Client) NodesCnt() int {
+	return len(c.nodes)
+}
+
+func (c *Client) Nodes() map[string]*node.Node {
+	return c.nodes
+}
+
 // TODO: run in batches + connect to the new nodes
 func (c *Client) AddrListner() {
 	for addrs := range newAddrCh {
@@ -139,11 +147,6 @@ func (c *Client) NodesUpdated() {
 		log.Infof("[NODES]: good nodes %d/%d (%.2f%%)\n", len(good), len(c.nodes), perc)
 		if len(good) == 0 {
 			continue
-		}
-		if len(good) == len(c.nodes) {
-			log.Warn("[NODES]: all nodes are good, exit")
-			log.Fatal("exit") // TODO: graceful exit
-			return
 		}
 
 		// save to json file

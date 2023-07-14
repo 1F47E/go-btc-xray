@@ -33,6 +33,7 @@ func main() {
 	}
 
 	c := client.NewClient(addrs)
+	log.Debugf("client inited with %d nodes\n", c.NodesCnt())
 	// debug
 	// random cut first 10
 	// rand shuffle nodes
