@@ -4,8 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"go-btc-downloader/pkg/config"
-	"log"
 	"math"
 	"math/big"
 	"net"
@@ -16,8 +14,6 @@ import (
 
 	"github.com/miekg/dns"
 )
-
-var cfg = config.New()
 
 type Node struct {
 	Addr      net.TCPAddr `json:"address"`
@@ -48,20 +44,20 @@ func (n *Node) IsConnected() bool {
 }
 
 func (n *Node) Connect() {
-	a := fmt.Sprintf("-> %s", n.Endpoint())
-	log.Printf("[%s]: connecting...\n", a)
+	a := fmt.Sprintf("▶︎ %s:", n.Endpoint())
+	log.Debugf("%s connecting...\n", a)
 	defer func() {
 		n.Conn = nil
-		fmt.Printf("[%s]: closed\n", a)
+		log.Warnf("%s closed\n", a)
 	}()
 	timeout := time.Duration(5 * time.Second)
 	conn, err := net.DialTimeout("tcp", n.Endpoint(), timeout)
 	if err != nil {
 		n.IsDead = true
-		log.Printf("[%s]: failed to connect: %v\n", a, err)
+		log.Debugf("%s failed to connect: %v\n", a, err)
 		return
 	}
-	log.Printf("[%s]: connected\n", a)
+	log.Debugf("%s connected\n", a)
 	n.Conn = conn
 	// handle answers
 	// TODO: fix goroutine leak
@@ -70,51 +66,51 @@ func (n *Node) Connect() {
 	// ===== NEGOTIATION
 	// 1. sending version
 	if n.Conn == nil {
-		log.Printf("[%s]: disconnected\n", a)
+		log.Debugf("%s disconnected\n", a)
 		return
 	}
 	msg, err := n.localVersionMsg()
 	if err != nil {
-		log.Printf("[%s]: failed to create version: %v", a, err)
+		log.Debugf("%s failed to create version: %v", a, err)
 		return
 	}
-	log.Printf("[%s]: sending version...\n", a)
+	log.Debugf("%s sending version...\n", a)
 	cnt, err := wire.WriteMessageN(n.Conn, msg, cfg.Pver, cfg.Btcnet)
 	if err != nil {
-		log.Printf("[%s]: failed to write version: %v", a, err)
+		log.Debugf("[%s]: failed to write version: %v", a, err)
 		return
 	}
-	log.Printf("[%s]: OK. sent %d bytes\n", a, cnt)
+	log.Debugf("%s OK. sent %d bytes\n", a, cnt)
 
 	// 2. send addr v2
 	// if pver < wire.AddrV2Version {
 	// 	return nil
 	// }
 	if n.Conn == nil {
-		log.Printf("[%s]: disconnected\n", a)
+		log.Debugf("%s disconnected\n", a)
 		return
 	}
-	log.Printf("[%s]: sending sendaddrv2...\n", a)
+	log.Debugf("%s sending sendaddrv2...\n", a)
 	sendAddrMsg := wire.NewMsgSendAddrV2()
 	cnt, err = wire.WriteMessageN(n.Conn, sendAddrMsg, cfg.Pver, cfg.Btcnet)
 	if err != nil {
-		log.Printf("[%s]: failed to write sendaddrv2: %v\n", a, err)
+		log.Debugf("%s failed to write sendaddrv2: %v\n", a, err)
 		return
 	}
-	log.Printf("[%s]: OK. sent %d bytes\n", a, cnt)
+	log.Debugf("%s OK. sent %d bytes\n", a, cnt)
 
 	// 3. send verAck
 	if n.Conn == nil {
-		log.Printf("[%s]: disconnected\n", a)
+		log.Debugf("%s disconnected\n", a)
 		return
 	}
-	log.Printf("[%s]: sending verack...\n", a)
+	log.Debugf("%s sending verack...\n", a)
 	cnt, err = wire.WriteMessageN(n.Conn, wire.NewMsgVerAck(), cfg.Pver, cfg.Btcnet)
 	if err != nil {
-		log.Printf("[%s]: failed to write verack: %v\n", a, err)
+		log.Debugf("%s failed to write verack: %v\n", a, err)
 		return
 	}
-	log.Printf("[%s]: OK. sent %d bytes\n", a, cnt)
+	log.Debugf("%s OK. sent %d bytes\n", a, cnt)
 
 	// ====== NEGOTIATION DONE
 
@@ -122,40 +118,40 @@ func (n *Node) Connect() {
 
 	// ask for peers once
 	if n.Conn == nil {
-		log.Printf("[%s]: disconnected\n", a)
+		log.Debugf("%s disconnected\n", a)
 		return
 	}
-	log.Printf("[%s]: sending getaddr...\n", a)
+	log.Debugf("%s sending getaddr...\n", a)
 	msgAddr := wire.NewMsgGetAddr()
 	cnt, err = wire.WriteMessageN(n.Conn, msgAddr, cfg.Pver, cfg.Btcnet)
 	if err != nil {
 		// Log and handle the error
-		log.Printf("[%s]: failed to write getaddr: %v\n", a, err)
+		log.Debugf("%s failed to write getaddr: %v\n", a, err)
 		return
 	}
-	log.Printf("[%s]: OK. sent %d bytes\n", a, cnt)
+	log.Debugf("%s OK. sent %d bytes\n", a, cnt)
 
 	// send pings
 	time.Sleep(1 * time.Second)
 	for {
 		if n.Conn == nil {
-			log.Printf("[%s]: disconnected\n", a)
+			log.Debugf("%s disconnected\n", a)
 			return
 		}
 		if n.PingCount >= 1 {
-			log.Printf("[%s]: ping count reached\n", a)
+			log.Debugf("%s ping count reached\n", a)
 			return
 		}
-		log.Printf("[%s]: sending ping...\n", a)
+		log.Debugf("%s sending ping...\n", a)
 		nonceBig, _ := rand.Int(rand.Reader, big.NewInt(int64(math.Pow(2, 62))))
 		n.PingNonce = nonceBig.Uint64()
 		msgPing := wire.NewMsgPing(n.PingNonce)
 		cnt, err = wire.WriteMessageN(n.Conn, msgPing, cfg.Pver, cfg.Btcnet)
 		if err != nil {
-			log.Printf("[%s]: failed to write ping: %v\n", a, err)
+			log.Debugf("%s failed to write ping: %v\n", a, err)
 			return
 		}
-		log.Printf("[%s]: OK. sent %d bytes\n", a, cnt)
+		log.Debugf("%s OK. sent %d bytes\n", a, cnt)
 		time.Sleep(1 * time.Minute)
 	}
 
@@ -223,7 +219,7 @@ func NodesRead(filename string) ([]*Node, error) {
 	for _, addr := range data {
 		a, err := net.ResolveTCPAddr("tcp", addr)
 		if err != nil {
-			log.Println("failed to resolve addr: ", addr)
+			log.Debug("failed to resolve addr: ", addr)
 			continue
 		}
 		ret = append(ret, &Node{Addr: *a})
@@ -234,7 +230,7 @@ func NodesRead(filename string) ([]*Node, error) {
 
 func SeedScan() ([]*Node, error) {
 	nodes := make([]*Node, 0)
-	fmt.Println("Getting nodes from dns seeds... via ", cfg.DnsAddress)
+	log.Debug("Getting nodes from dns seeds... via ", cfg.DnsAddress)
 	now := time.Now()
 	if cfg.DnsSeeds == nil {
 		return nil, fmt.Errorf("no dns seeds")
@@ -247,10 +243,14 @@ func SeedScan() ([]*Node, error) {
 		c.Timeout = cfg.DnsTimeout
 		in, _, err := c.Exchange(m, cfg.DnsAddress)
 		if err != nil {
-			fmt.Printf("Failed to get nodes from %v: %v\n", seed, err)
+			log.Errorf("Failed to get nodes from %v: %v\n", seed, err)
 			continue
 		}
-		fmt.Printf("Got %v nodes from %v\n", len(in.Answer), seed)
+		if len(in.Answer) == 0 {
+			log.Errorf("No nodes found from %v\n", seed)
+		} else {
+			log.Infof("Got %v nodes from %v\n", len(in.Answer), seed)
+		}
 		// loop through dns records
 		for _, ans := range in.Answer {
 			// check that record is valid
@@ -271,7 +271,7 @@ func SeedScan() ([]*Node, error) {
 	if len(nodes) == 0 {
 		return nil, fmt.Errorf("No nodes found")
 	}
-	fmt.Printf("Got %v nodes in %v\n", len(nodes), time.Since(now))
+	log.Infof("Got %v nodes in %v\n", len(nodes), time.Since(now))
 
 	// save nodes as json
 	fData := make([]string, len(nodes))
@@ -286,7 +286,7 @@ func SeedScan() ([]*Node, error) {
 	if err != nil {
 		log.Fatalf("failed to write nodes: %v", err)
 	}
-	log.Printf("saved %v nodes to %v\n", len(nodes), cfg.NodesDB)
+	log.Infof("saved %v nodes to %v\n", len(nodes), cfg.NodesDB)
 	return nodes, nil
 }
 

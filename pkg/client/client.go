@@ -1,14 +1,16 @@
 package client
 
 import (
-	"fmt"
-	"log"
+	"go-btc-downloader/pkg/config"
+	"go-btc-downloader/pkg/logger"
 	"net"
 	"sync"
 	"time"
 )
 
 var mu = sync.Mutex{}
+var cfg = config.New()
+var log *logger.Logger = logger.New()
 
 // batch of new addresses. not block the sented (listner) goroutine
 var newNodesCh = make(chan []string, 100)
@@ -30,12 +32,12 @@ func NewClient(nodes []*Node) *Client {
 // TODO: run in batches + connect to the new nodes
 func (c *Client) NewNodesListner() {
 	for addrs := range newNodesCh {
-		log.Printf("[NODES]: got batch %d new nodes\n", len(addrs))
+		log.Debugf("[NODES]: got batch %d new nodes\n", len(addrs))
 		mu.Lock()
 		for _, addr := range addrs {
 			tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
 			if err != nil {
-				log.Printf("[NODES]: failed to resolve addr %s: %v\n", addr, err)
+				log.Debugf("[NODES]: failed to resolve addr %s: %v\n", addr, err)
 				continue
 			}
 			n := Node{Addr: *tcpAddr}
@@ -91,10 +93,10 @@ func (c *Client) Connector() {
 			waitlist = append(waitlist, node)
 		}
 		mu.Unlock()
-		fmt.Printf("[NODES]: %d/%d nodes connected\n", connectedCnt, limit)
+		log.Infof("[NODES]: %d/%d nodes connected\n", connectedCnt, limit)
 		if left > 0 && len(waitlist) > 0 {
-			fmt.Printf("[NODES]: %d nodes in waitlist\n", len(waitlist))
-			fmt.Printf("[NODES]: connecting to %d nodes\n", left)
+			log.Infof("[NODES]: %d nodes in waitlist\n", len(waitlist))
+			log.Infof("[NODES]: connecting to %d nodes\n", left)
 			for i := 0; i <= left; i++ {
 				if i >= len(waitlist) {
 					break
@@ -108,7 +110,7 @@ func (c *Client) Connector() {
 func (c *Client) UpdateNodes() {
 	for {
 		time.Sleep(10 * time.Second)
-		log.Printf("[NODES]: update nodes. total now %d\n", len(c.nodes))
+		log.Debugf("[NODES]: update nodes. total now %d\n", len(c.nodes))
 
 		// filter good nodes
 		good := make([]string, 0)
@@ -120,7 +122,7 @@ func (c *Client) UpdateNodes() {
 			}
 
 			if node.IsDead {
-				log.Printf("[NODES]: node %s is dead\n", addr)
+				log.Debugf("[NODES]: node %s is dead\n", addr)
 				toDelete = append(toDelete, addr)
 			}
 		}
@@ -129,7 +131,7 @@ func (c *Client) UpdateNodes() {
 		}
 		mu.Unlock()
 		perc := float64(len(good)) / float64(len(c.nodes)) * 100
-		log.Printf("[NODES]: good nodes %d/%d (%.2f%%)\n", len(good), len(c.nodes), perc)
+		log.Debugf("[NODES]: good nodes %d/%d (%.2f%%)\n", len(good), len(c.nodes), perc)
 		if len(good) == 0 {
 			continue
 		}
@@ -137,14 +139,14 @@ func (c *Client) UpdateNodes() {
 		// save to json file
 		// j, err := json.MarshalIndent(good, "", "  ")
 		// if err != nil {
-		// 	log.Printf("[NODES]: failed to marshal nodes: %v\n", err)
+		// 	log.Debugf("[NODES]: failed to marshal nodes: %v\n", err)
 		// 	continue
 		// }
 		// err = os.WriteFile(cfg.NodesDB, j, 0644)
 		// if err != nil {
-		// 	log.Printf("[NODES]: failed to write nodes: %v\n", err)
+		// 	log.Debugf("[NODES]: failed to write nodes: %v\n", err)
 		// 	continue
 		// }
-		// log.Printf("[NODES]: saved %d node to %v\n", len(good), cfg.PeersDB)
+		// log.Debugf("[NODES]: saved %d node to %v\n", len(good), cfg.PeersDB)
 	}
 }

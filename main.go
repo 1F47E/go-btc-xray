@@ -2,11 +2,15 @@ package main
 
 import (
 	"go-btc-downloader/pkg/client"
-	"log"
+	"go-btc-downloader/pkg/logger"
 	"sync"
 )
 
 func main() {
+	// ctx, cancel := context.WithCancel(context.Background())
+
+	log := logger.New()
+
 	// get from file
 	// cfg := config.New()
 	// f := cfg.NodesDB
@@ -27,6 +31,7 @@ func main() {
 		log.Fatalf("no nodes found")
 	}
 
+	c := client.NewClient(nodes)
 	// debug
 	// random cut first 10
 	// rand shuffle nodes
@@ -37,7 +42,6 @@ func main() {
 	// nodes = nodes[:5]
 
 	// monitor new peers, report
-	c := client.NewClient(nodes)
 	go c.UpdateNodes()
 
 	wg := sync.WaitGroup{}
@@ -53,6 +57,11 @@ func main() {
 	go c.Connector()
 	// go c.NewNodesListner()
 	// always block for now
+	// exit := make(chan os.Signal, 1)
+	// signal.Notify(exit, os.Interrupt)
+	// <-exit
+	// cancel()
+	// log.Warn("exiting")
 	wg.Add(1)
 	wg.Wait()
 }

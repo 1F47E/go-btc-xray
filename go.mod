@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/btcsuite/btcd v0.23.4
 	github.com/miekg/dns v1.1.50
+	github.com/sirupsen/logrus v1.9.3
 )
 
 require (
