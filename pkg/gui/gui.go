@@ -283,7 +283,6 @@ func (g *GUI) Update(d Data) {
 
 func (g *GUI) Log(log string) {
 	updateDataList(g.logsList, log, g.logs, lenLogs)
-	updateSlice(g.logs, g.logsList, lenLogs)
 }
 
 func (g *GUI) getInfo() [][]string {
