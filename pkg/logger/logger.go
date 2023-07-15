@@ -25,7 +25,7 @@ type Logger struct {
 	guiLogsCh chan string
 }
 
-func New(guiLogsCh chan string) *Logger {
+func New(guiCh chan string) *Logger {
 	log := logrus.New()
 	format := &logrus.TextFormatter{
 		ForceColors:      true,
@@ -53,7 +53,7 @@ func New(guiLogsCh chan string) *Logger {
 
 	log.SetFormatter(format)
 
-	return &Logger{log, guiLogsCh}
+	return &Logger{log, guiCh}
 }
 
 func (l *Logger) Close() error {

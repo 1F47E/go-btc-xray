@@ -94,17 +94,27 @@ func main() {
 	// send fake nodes total to debug
 	go func() {
 		for {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 			rInt := rand.Intn(100)
 			guiCh <- gui.Data{
 				NodesTotal: 100 + rInt,
 			}
 		}
 	}()
+	// send queue
+	go func() {
+		for {
+			time.Sleep(200 * time.Millisecond)
+			rInt := rand.Intn(100)
+			guiCh <- gui.Data{
+				NodesQueued: 20 + rInt,
+			}
+		}
+	}()
 	// send good nodes to debug
 	go func() {
 		for {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond)
 			rInt := rand.Intn(100)
 			guiCh <- gui.Data{
 				NodesGood: 100 + rInt,
@@ -114,10 +124,22 @@ func main() {
 	// send dead nodes to debug
 	go func() {
 		for {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(400 * time.Millisecond)
 			rInt := rand.Intn(100)
 			guiCh <- gui.Data{
 				NodesDead: 100 + rInt,
+			}
+		}
+	}()
+	// send debug msg in and out
+	go func() {
+		for {
+			time.Sleep(500 * time.Millisecond)
+			rIntIn := rand.Intn(100)
+			rIntOut := rand.Intn(100)
+			guiCh <- gui.Data{
+				MsgIn:  rIntIn,
+				MsgOut: rIntOut,
 			}
 		}
 	}()

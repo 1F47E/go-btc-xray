@@ -25,15 +25,18 @@ type Data struct {
 	NodesTotal  int
 	NodesGood   int
 	NodesDead   int
+	NodesQueued int
+	MsgIn       int
+	MsgOut      int
 }
 
 type GUI struct {
 	maxConnections int
 	// Info table
-	infoTotalNodes  int
-	infoGoodNodes   int
-	infoDeadNodes   int
-	infoQueueNodes  int
+	infoNodesTotal  int
+	infoNodesGood   int
+	infoNodesDead   int
+	infoNodesQueued int
 	infoConnections int
 	infoMsgIn       int
 	infoMsgOut      int
@@ -109,15 +112,7 @@ func (g *GUI) Start() {
 	stats.RowStyles[2] = tui.NewStyle(tui.ColorRed)
 	stats.RowStyles[3] = tui.NewStyle(tui.ColorYellow)
 	stats.RowStyles[4] = tui.NewStyle(tui.ColorMagenta)
-	stats.Rows = [][]string{
-		{"Total nodes", "10000"},
-		{"Good nodes", "123"},
-		{"Dead nodes", "456"},
-		{"Wait list", "789"},
-		{"Connections", fmt.Sprintf("%d/%d", 0, g.maxConnections)},
-		{"Msg out", "123"},
-		{"Msg in", "50"},
-	}
+	stats.Rows = g.getInfo()
 	stats.TextStyle = tui.NewStyle(tui.ColorWhite)
 	tui.Render(stats)
 
@@ -158,7 +153,7 @@ func (g *GUI) Start() {
 	grid.SetRect(0, 0, termWidth, termHeight)
 	grid.Set(
 		// conn + stats + nodes
-		tui.NewRow(1.0/2-1.0/5,
+		tui.NewRow(0.25,
 			tui.NewCol(0.2, chartConnGroup), // conn
 			tui.NewCol(0.2, stats),          // stats
 			tui.NewCol(0.2, chartNodesQueue),
@@ -166,11 +161,11 @@ func (g *GUI) Start() {
 			tui.NewCol(0.2, chartNodesDead),
 		),
 		// progress
-		tui.NewRow(1.0/10,
+		tui.NewRow(0.1,
 			tui.NewCol(1, g0),
 		),
 		// logs
-		tui.NewRow(1.0/2,
+		tui.NewRow(0.65,
 			tui.NewCol(1.0, p),
 		),
 	)
@@ -213,6 +208,9 @@ func (g *GUI) Start() {
 			g.updateTitle(chartNodesGood, "Good")
 			g.updateTitle(chartNodesDead, "Dead")
 
+			// update info
+			stats.Rows = g.getInfo()
+
 			// debug info
 			// msg := fmt.Sprintf("dataNodesTotal: len %d, cap %d\n", len(g.dataNodesTotal), cap(g.dataNodesTotal))
 			// msg += fmt.Sprintf("dataNodesTotalLL: %d\n", g.dataNodesTotalList.Len())
@@ -234,33 +232,63 @@ func (g *GUI) Start() {
 func (g *GUI) Update(d Data) {
 	mu.Lock()
 	// update connection data
-	updateNodeList(g.dataConnectionsList, d.Connections, lenConnChart)
+	updateDataList(g.dataConnectionsList, float64(d.Connections), lenConnChart)
 	updateSlice(g.dataConnections, g.dataConnectionsList, lenConnChart)
+	g.infoConnections = d.Connections
 
 	// update nodes linked lists (in place)
-	updateNodeList(g.dataNodesTotalList, d.NodesTotal, lenNodesChart)
-	updateNodeList(g.dataNodesGoodList, d.NodesGood, lenNodesChart)
-	updateNodeList(g.dataNodesDeadList, d.NodesDead, lenNodesChart)
+	updateDataList(g.dataNodesTotalList, float64(d.NodesTotal), lenNodesChart)
+	updateDataList(g.dataNodesGoodList, float64(d.NodesGood), lenNodesChart)
+	updateDataList(g.dataNodesDeadList, float64(d.NodesDead), lenNodesChart)
 
-	// update slices in place
+	// update slices in placj
 	updateSlice(g.dataNodesTotal, g.dataNodesTotalList, lenNodesChart)
 	updateSlice(g.dataNodesGood, g.dataNodesGoodList, lenNodesChart)
 	updateSlice(g.dataNodesDead, g.dataNodesDeadList, lenNodesChart)
 
+	if d.Connections > 0 {
+		g.infoConnections = d.Connections
+	}
+	if d.NodesTotal > 0 {
+		g.infoNodesTotal = d.NodesTotal
+	}
+	if d.NodesQueued > 0 {
+		g.infoNodesQueued = d.NodesQueued
+	}
+	if d.NodesGood > 0 {
+		g.infoNodesGood = d.NodesGood
+	}
+	if d.NodesDead > 0 {
+		g.infoNodesDead = d.NodesDead
+	}
+	if d.MsgIn > 0 {
+		g.infoMsgIn = d.MsgIn
+	}
+	if d.MsgOut > 0 {
+		g.infoMsgOut = d.MsgOut
+	}
+
 	mu.Unlock()
 }
 
-func updateNodeList(l *list.List, data int, limit int) {
-	if data <= 0 {
-		return
+func updateDataList[T any](l *list.List, data T, limit int) {
+	switch v := any(data).(type) {
+	case float64:
+		if v == 0 {
+			return
+		}
+	case string:
+		if v == "" {
+			return
+		}
 	}
-	l.PushBack(float64(data))
+	l.PushBack(T(data))
 	if l.Len() > limit {
 		l.Remove(l.Front())
 	}
 }
 
-func updateSlice(s []float64, l *list.List, limit int) {
+func updateSlice[T any](s []T, l *list.List, limit int) {
 	i := 0
 	// loop from back to front and update slice accordingly
 	for e := l.Back(); e != nil; e = e.Prev() {
@@ -271,15 +299,15 @@ func updateSlice(s []float64, l *list.List, limit int) {
 		if idx >= len(s) {
 			break
 		}
-		s[idx] = e.Value.(float64)
+		s[idx] = e.Value.(T)
 		i++
 	}
 }
 
 func (g *GUI) Log(log string) {
 	mu.Lock()
-	updateLogsList(g.logsList, log, lenLogs)
-	updateLogSlice(g.logs, g.logsList, lenLogs)
+	updateDataList(g.logsList, log, lenLogs)
+	updateSlice(g.logs, g.logsList, lenLogs)
 	// g.logs = append(g.logs, log)
 	// if len(g.logs) > lenLogs {
 	// 	g.logs = g.logs[len(g.logs)-lenLogs:]
@@ -287,35 +315,47 @@ func (g *GUI) Log(log string) {
 	mu.Unlock()
 }
 
-func updateLogSlice(s []string, l *list.List, limit int) {
-	i := 0
-	// loop from back to front and update slice accordingly
-	for e := l.Back(); e != nil; e = e.Prev() {
-		if i >= limit {
-			break
-		}
-		idx := limit - 1 - i
-		if idx >= len(s) {
-			break
-		}
-		s[idx] = e.Value.(string)
-		i++
-	}
-}
-
-func updateLogsList(l *list.List, log string, limit int) {
-	if log == "" {
-		return
-	}
-	l.PushBack(log)
-	if l.Len() > limit {
-		l.Remove(l.Front())
-	}
-}
+// func updateLogSlice(s []string, l *list.List, limit int) {
+// 	i := 0
+// 	// loop from back to front and update slice accordingly
+// 	for e := l.Back(); e != nil; e = e.Prev() {
+// 		if i >= limit {
+// 			break
+// 		}
+// 		idx := limit - 1 - i
+// 		if idx >= len(s) {
+// 			break
+// 		}
+// 		s[idx] = e.Value.(string)
+// 		i++
+// 	}
+// }
+//
+// func updateLogsList(l *list.List, log string, limit int) {
+// 	if log == "" {
+// 		return
+// 	}
+// 	l.PushBack(log)
+// 	if l.Len() > limit {
+// 		l.Remove(l.Front())
+// 	}
+// }
 
 func (g *GUI) updateTitle(chart *widgets.Plot, title string) {
 	if len(g.dataNodesDead) > 0 {
 		title += fmt.Sprintf(" (%.0f)", g.dataNodesDead[len(g.dataNodesDead)-1])
 	}
 	chart.Title = title
+}
+
+func (g *GUI) getInfo() [][]string {
+	return [][]string{
+		{"Total nodes", fmt.Sprintf("%d", g.infoNodesTotal)},
+		{"Good nodes", fmt.Sprintf("%d", g.infoNodesGood)},
+		{"Dead nodes", fmt.Sprintf("%d", g.infoNodesDead)},
+		{"Queue", fmt.Sprintf("%d", g.infoNodesQueued)},
+		{"Connections", fmt.Sprintf("%d/%d", g.infoConnections, g.maxConnections)},
+		{"Msg out", fmt.Sprintf("%d", g.infoMsgOut)},
+		{"Msg in", fmt.Sprintf("%d", g.infoMsgIn)},
+	}
 }
