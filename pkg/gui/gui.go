@@ -47,13 +47,15 @@ type GUI struct {
 
 	// Nodes chart
 	// linked list to update
-	dataNodesTotalList *list.List
-	dataNodesGoodList  *list.List
-	dataNodesDeadList  *list.List
+	dataNodesTotalList  *list.List
+	dataNodesQueuedList *list.List
+	dataNodesGoodList   *list.List
+	dataNodesDeadList   *list.List
 	// slices for the chart, convert from linked list
-	dataNodesTotal []float64
-	dataNodesGood  []float64
-	dataNodesDead  []float64
+	dataNodesTotal  []float64
+	dataNodesQueued []float64
+	dataNodesGood   []float64
+	dataNodesDead   []float64
 
 	logsList *list.List
 	logs     []string
@@ -66,12 +68,14 @@ func New() *GUI {
 		dataConnectionsList: list.New(),
 		dataConnections:     make([]float64, lenConnChart),
 
-		dataNodesTotalList: list.New(),
-		dataNodesGoodList:  list.New(),
-		dataNodesDeadList:  list.New(),
-		dataNodesTotal:     make([]float64, lenNodesChart),
-		dataNodesGood:      make([]float64, lenNodesChart),
-		dataNodesDead:      make([]float64, lenNodesChart),
+		dataNodesTotalList:  list.New(),
+		dataNodesQueuedList: list.New(),
+		dataNodesGoodList:   list.New(),
+		dataNodesDeadList:   list.New(),
+		dataNodesTotal:      make([]float64, lenNodesChart),
+		dataNodesQueued:     make([]float64, lenNodesChart),
+		dataNodesGood:       make([]float64, lenNodesChart),
+		dataNodesDead:       make([]float64, lenNodesChart),
 
 		logsList: list.New(),
 		logs:     make([]string, lenLogs),
@@ -101,8 +105,8 @@ func (g *GUI) Start() {
 	chartConn.Data = []float64{0}
 	chartConn.LineColor = tui.ColorMagenta
 	chartConn.TitleStyle.Fg = tui.ColorWhite
-	chartConnGroup := widgets.NewSparklineGroup(chartConn)
-	chartConnGroup.Title = "Connections"
+	chartConnWrap := widgets.NewSparklineGroup(chartConn)
+	chartConnWrap.Title = "Connections"
 
 	// STATS
 	stats := widgets.NewTable()
@@ -115,6 +119,12 @@ func (g *GUI) Start() {
 	stats.Rows = g.getInfo()
 	stats.TextStyle = tui.NewStyle(tui.ColorWhite)
 	tui.Render(stats)
+
+	// TOTAL
+	chartNodesTotal := widgets.NewPlot()
+	chartNodesTotal.ShowAxes = false
+	chartNodesTotal.Data = [][]float64{make([]float64, lenNodesChart)}
+	chartNodesTotal.LineColors = []tui.Color{tui.ColorWhite} // force the collor, bug
 
 	// QUEUE
 	chartNodesQueue := widgets.NewPlot()
@@ -154,19 +164,25 @@ func (g *GUI) Start() {
 	grid.Set(
 		// conn + stats + nodes
 		tui.NewRow(0.25,
-			tui.NewCol(0.2, chartConnGroup), // conn
-			tui.NewCol(0.2, stats),          // stats
+			// tui.NewCol(0.2, chartConnGroup), // conn
+			// tui.NewRow(0.2,
+			// 	tui.NewCol(0.2, stats),          // stats
+			// 	tui.NewCol(0.2, chartConnGroup), // conn
+			// ),
+			tui.NewCol(0.2, stats),
+			tui.NewCol(0.2, chartNodesTotal),
 			tui.NewCol(0.2, chartNodesQueue),
 			tui.NewCol(0.2, chartNodesGood),
 			tui.NewCol(0.2, chartNodesDead),
 		),
+		// logs
+		tui.NewRow(0.65,
+			tui.NewCol(0.9, p),
+			tui.NewCol(0.1, chartConnWrap),
+		),
 		// progress
 		tui.NewRow(0.1,
 			tui.NewCol(1, g0),
-		),
-		// logs
-		tui.NewRow(0.65,
-			tui.NewCol(1.0, p),
 		),
 	)
 	tui.Render(grid)
@@ -196,17 +212,20 @@ func (g *GUI) Start() {
 			p.Text = strings.Join(g.logs, "\n")
 
 			// connections update
-			chartConnGroup.Sparklines[0].Data = g.dataConnections
+			chartConnWrap.Sparklines[0].Data = g.dataConnections
 
 			// nodes chart
-			chartNodesQueue.Data[0] = g.dataNodesTotal
+			chartNodesTotal.Data[0] = g.dataNodesTotal
+			chartNodesQueue.Data[0] = g.dataNodesQueued
 			chartNodesGood.Data[0] = g.dataNodesGood
 			chartNodesDead.Data[0] = g.dataNodesDead
 
 			//  update titles
-			g.updateTitle(chartNodesQueue, "Queue")
-			g.updateTitle(chartNodesGood, "Good")
-			g.updateTitle(chartNodesDead, "Dead")
+			updateTitle(g.infoNodesTotal, chartNodesTotal, "Total")
+			updateTitle(g.infoNodesQueued, chartNodesQueue, "Queue")
+			updateTitle(g.infoNodesGood, chartNodesGood, "Good")
+			updateTitle(g.infoNodesDead, chartNodesDead, "Dead")
+			updateTitleChart(g.infoConnections, chartConnWrap, "Conn.")
 
 			// update info
 			stats.Rows = g.getInfo()
@@ -230,7 +249,6 @@ func (g *GUI) Start() {
 // in serial data (charts) we push new data to the linked lists first
 // and then construct slices from the linked lists
 func (g *GUI) Update(d Data) {
-	mu.Lock()
 	// update connection data
 	updateDataList(g.dataConnectionsList, float64(d.Connections), lenConnChart)
 	updateSlice(g.dataConnections, g.dataConnectionsList, lenConnChart)
@@ -238,11 +256,13 @@ func (g *GUI) Update(d Data) {
 
 	// update nodes linked lists (in place)
 	updateDataList(g.dataNodesTotalList, float64(d.NodesTotal), lenNodesChart)
+	updateDataList(g.dataNodesQueuedList, float64(d.NodesQueued), lenNodesChart)
 	updateDataList(g.dataNodesGoodList, float64(d.NodesGood), lenNodesChart)
 	updateDataList(g.dataNodesDeadList, float64(d.NodesDead), lenNodesChart)
 
 	// update slices in placj
 	updateSlice(g.dataNodesTotal, g.dataNodesTotalList, lenNodesChart)
+	updateSlice(g.dataNodesQueued, g.dataNodesQueuedList, lenNodesChart)
 	updateSlice(g.dataNodesGood, g.dataNodesGoodList, lenNodesChart)
 	updateSlice(g.dataNodesDead, g.dataNodesDeadList, lenNodesChart)
 
@@ -268,10 +288,28 @@ func (g *GUI) Update(d Data) {
 		g.infoMsgOut = d.MsgOut
 	}
 
-	mu.Unlock()
+}
+
+func (g *GUI) Log(log string) {
+	updateDataList(g.logsList, log, lenLogs)
+	updateSlice(g.logs, g.logsList, lenLogs)
+}
+
+func (g *GUI) getInfo() [][]string {
+	return [][]string{
+		{"Total nodes", fmt.Sprintf("%d", g.infoNodesTotal)},
+		{"Good nodes", fmt.Sprintf("%d", g.infoNodesGood)},
+		{"Dead nodes", fmt.Sprintf("%d", g.infoNodesDead)},
+		{"Queue", fmt.Sprintf("%d", g.infoNodesQueued)},
+		{"Connections", fmt.Sprintf("%d/%d", g.infoConnections, g.maxConnections)},
+		{"Msg out", fmt.Sprintf("%d", g.infoMsgOut)},
+		{"Msg in", fmt.Sprintf("%d", g.infoMsgIn)},
+	}
 }
 
 func updateDataList[T any](l *list.List, data T, limit int) {
+	mu.Lock()
+	defer mu.Unlock()
 	switch v := any(data).(type) {
 	case float64:
 		if v == 0 {
@@ -289,6 +327,8 @@ func updateDataList[T any](l *list.List, data T, limit int) {
 }
 
 func updateSlice[T any](s []T, l *list.List, limit int) {
+	mu.Lock()
+	defer mu.Unlock()
 	i := 0
 	// loop from back to front and update slice accordingly
 	for e := l.Back(); e != nil; e = e.Prev() {
@@ -304,58 +344,16 @@ func updateSlice[T any](s []T, l *list.List, limit int) {
 	}
 }
 
-func (g *GUI) Log(log string) {
-	mu.Lock()
-	updateDataList(g.logsList, log, lenLogs)
-	updateSlice(g.logs, g.logsList, lenLogs)
-	// g.logs = append(g.logs, log)
-	// if len(g.logs) > lenLogs {
-	// 	g.logs = g.logs[len(g.logs)-lenLogs:]
-	// }
-	mu.Unlock()
-}
-
-// func updateLogSlice(s []string, l *list.List, limit int) {
-// 	i := 0
-// 	// loop from back to front and update slice accordingly
-// 	for e := l.Back(); e != nil; e = e.Prev() {
-// 		if i >= limit {
-// 			break
-// 		}
-// 		idx := limit - 1 - i
-// 		if idx >= len(s) {
-// 			break
-// 		}
-// 		s[idx] = e.Value.(string)
-// 		i++
-// 	}
-// }
-//
-// func updateLogsList(l *list.List, log string, limit int) {
-// 	if log == "" {
-// 		return
-// 	}
-// 	l.PushBack(log)
-// 	if l.Len() > limit {
-// 		l.Remove(l.Front())
-// 	}
-// }
-
-func (g *GUI) updateTitle(chart *widgets.Plot, title string) {
-	if len(g.dataNodesDead) > 0 {
-		title += fmt.Sprintf(" (%.0f)", g.dataNodesDead[len(g.dataNodesDead)-1])
+func updateTitleChart(data int, chart *widgets.SparklineGroup, title string) {
+	if data > 0 {
+		title += fmt.Sprintf(": %d", data)
 	}
 	chart.Title = title
 }
 
-func (g *GUI) getInfo() [][]string {
-	return [][]string{
-		{"Total nodes", fmt.Sprintf("%d", g.infoNodesTotal)},
-		{"Good nodes", fmt.Sprintf("%d", g.infoNodesGood)},
-		{"Dead nodes", fmt.Sprintf("%d", g.infoNodesDead)},
-		{"Queue", fmt.Sprintf("%d", g.infoNodesQueued)},
-		{"Connections", fmt.Sprintf("%d/%d", g.infoConnections, g.maxConnections)},
-		{"Msg out", fmt.Sprintf("%d", g.infoMsgOut)},
-		{"Msg in", fmt.Sprintf("%d", g.infoMsgIn)},
+func updateTitle(data int, chart *widgets.Plot, title string) {
+	if data > 0 {
+		title += fmt.Sprintf(" (%d)", data)
 	}
+	chart.Title = title
 }
