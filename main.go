@@ -5,13 +5,15 @@ import (
 	"go-btc-downloader/pkg/dns"
 	"go-btc-downloader/pkg/gui"
 	"go-btc-downloader/pkg/logger"
+	"math/rand"
 	"os"
 	"sync"
+	"time"
 )
 
 func main() {
 	// cfg := config.New()
-	guiCh := make(chan gui.Data, 100) // do not block sending gui updated
+	guiCh := make(chan gui.IncomingData, 100) // do not block sending gui updated
 	guiLogsCh := make(chan string, 100)
 	log := logger.New(guiLogsCh)
 
@@ -51,7 +53,7 @@ func main() {
 		}
 		log.Debugf("dns scan found %d nodes", len(addrs))
 		// disabled for gui debugging
-		c.AddNodes(addrs)
+		// c.AddNodes(addrs)
 	}()
 
 	// get from file
@@ -86,15 +88,15 @@ func main() {
 	// 	}
 	// }()
 	// send fake nodes total to debug
-	// go func() {
-	// 	for {
-	// 		time.Sleep(200 * time.Millisecond)
-	// 		rInt := rand.Intn(100)
-	// 		guiCh <- gui.Data{
-	// 			NodesTotal: 100 + rInt,
-	// 		}
-	// 	}
-	// }()
+	go func() {
+		for {
+			time.Sleep(200 * time.Millisecond)
+			rInt := rand.Intn(100)
+			guiCh <- gui.IncomingData{
+				NodesTotal: 100 + rInt,
+			}
+		}
+	}()
 	// // send queue
 	// go func() {
 	// 	for {

@@ -22,7 +22,7 @@ const lenLogs = 20
 const lenConnChart = 14
 const lenNodesChart = 32
 
-type Data struct {
+type IncomingData struct {
 	Connections int
 	NodesTotal  int
 	NodesGood   int
@@ -32,10 +32,103 @@ type Data struct {
 	MsgOut      int
 }
 
+// Custom data structure for the charts and logs
+// Implements FIFO principle via linked list and arrays as a copy of the data
+// Data scructure will be read heavy. Writes 1 RPS, reads 10 RPS
+type queue struct {
+	list           *list.List
+	size           int
+	data           []queueData
+	dataFlatFloat  []float64
+	dataFlatString []string
+}
+
+type queueData struct {
+	data interface{} // float64 or string
+}
+
+func NewQueue(size int) *queue {
+	q := queue{
+		list: list.New(),
+		size: size,
+		data: make([]queueData, size),
+	}
+	return &q
+}
+
+func (q *queue) AddFloat(val float64) {
+	q.add(queueData{data: val})
+	// copy data over from data box to the flat array
+	if q.dataFlatFloat == nil {
+		q.dataFlatFloat = make([]float64, q.size)
+	}
+	for i, v := range q.data {
+		// because q.data is preallocated we should stop at nil values
+		if v.data == nil {
+			return
+		}
+		q.dataFlatFloat[i] = v.data.(float64)
+	}
+}
+
+func (q *queue) AddString(val string) {
+	q.add(queueData{data: val})
+	// copy data over from data box to the flat array
+	if q.dataFlatString == nil {
+		q.dataFlatString = make([]string, q.size)
+	}
+	for i, v := range q.data {
+		q.dataFlatString[i] = v.data.(string)
+	}
+}
+
+func (q *queue) add(data queueData) {
+	q.list.PushBack(data)
+	if q.list.Len() > q.size {
+		q.list.Remove(q.list.Front())
+	}
+	// update data
+	// copy list elements to the slice
+	// updateSlice(mirror, l, limit)
+	// loop from back to front and update slice accordingly
+	i := 0
+	for e := q.list.Back(); e != nil; e = e.Prev() {
+		if i >= q.size {
+			break
+		}
+		idx := q.size - 1 - i
+		if idx >= len(q.data) {
+			break
+		}
+		q.data[idx] = e.Value.(queueData)
+		i++
+	}
+}
+
+func (q *queue) getData() []queueData {
+	return q.data
+}
+
+func (q *queue) getFlatFloat() []float64 {
+	return q.dataFlatFloat
+}
+
+func (q *queue) getFlatString() []string {
+	return q.dataFlatString
+}
+
+func (q *queue) GetLastNum() int {
+	if q.dataFlatFloat == nil || len(q.dataFlatFloat) == 0 {
+		return 0
+	}
+	last := q.dataFlatFloat[len(q.dataFlatFloat)-1]
+	return int(last)
+}
+
 type GUI struct {
 	maxConnections int
 	// Info table
-	infoNodesTotal  int
+	// infoNodesTotal  int
 	infoNodesGood   int
 	infoNodesDead   int
 	infoNodesQueued int
@@ -49,12 +142,12 @@ type GUI struct {
 
 	// Nodes chart
 	// linked list to update
-	dataNodesTotalList  *list.List
+	// dataNodesTotalList  *list.List
 	dataNodesQueuedList *list.List
 	dataNodesGoodList   *list.List
 	dataNodesDeadList   *list.List
 	// slices for the chart, convert from linked list
-	dataNodesTotal  []float64
+	dataNodesTotal  *queue
 	dataNodesQueued []float64
 	dataNodesGood   []float64
 	dataNodesDead   []float64
@@ -70,11 +163,11 @@ func New() *GUI {
 		dataConnectionsList: list.New(),
 		dataConnections:     make([]float64, lenConnChart),
 
-		dataNodesTotalList:  list.New(),
+		// dataNodesTotalList:  list.New(),
 		dataNodesQueuedList: list.New(),
 		dataNodesGoodList:   list.New(),
 		dataNodesDeadList:   list.New(),
-		dataNodesTotal:      make([]float64, lenNodesChart),
+		dataNodesTotal:      NewQueue(lenNodesChart),
 		dataNodesQueued:     make([]float64, lenNodesChart),
 		dataNodesGood:       make([]float64, lenNodesChart),
 		dataNodesDead:       make([]float64, lenNodesChart),
@@ -213,13 +306,21 @@ func (g *GUI) Start() {
 
 			// nodes chart
 			// chartNodesTotal.Data[0] = g.dataNodesTotal.Data()
-			chartNodesTotal.Data[0] = g.dataNodesTotal
+			totalData := g.dataNodesTotal.getData()
+			totalDataF := make([]float64, len(totalData))
+			for i, v := range totalData {
+				// totalDataF[i] = float64(v.Data)
+				if v.data != nil {
+					totalDataF[i] = v.data.(float64)
+				}
+			}
+			chartNodesTotal.Data[0] = totalDataF
 			chartNodesQueue.Data[0] = g.dataNodesQueued
 			chartNodesGood.Data[0] = g.dataNodesGood
 			chartNodesDead.Data[0] = g.dataNodesDead
 
 			//  update titles
-			updateTitle(g.infoNodesTotal, chartNodesTotal, "Total")
+			updateTitle(g.dataNodesTotal.GetLastNum(), chartNodesTotal, "Total")
 			updateTitle(g.infoNodesQueued, chartNodesQueue, "Queue")
 			updateTitle(g.infoNodesGood, chartNodesGood, "Good")
 			updateTitle(g.infoNodesDead, chartNodesDead, "Dead")
@@ -230,8 +331,8 @@ func (g *GUI) Start() {
 
 			// debug info to logs
 			if os.Getenv("LOGS") == "2" {
-				msg := fmt.Sprintf("dataNodesTotal: len %d, cap %d\n", len(g.dataNodesTotal), cap(g.dataNodesTotal))
-				msg += fmt.Sprintf("dataNodesTotalLL: %d\n", g.dataNodesTotalList.Len())
+				msg := fmt.Sprintf("dataNodesTotal: len %d, cap %d\n", len(g.dataNodesTotal.data), cap(g.dataNodesTotal.data))
+				// msg += fmt.Sprintf("dataNodesTotalLL: %d\n", g.dataNodesTotalList.Len())
 				// report G count and memory used
 				var m runtime.MemStats
 				runtime.ReadMemStats(&m)
@@ -247,7 +348,7 @@ func (g *GUI) Start() {
 // update GUI data
 // in serial data (charts) we push new data to the linked lists first
 // and then construct slices from the linked lists
-func (g *GUI) Update(d Data) {
+func (g *GUI) Update(d IncomingData) {
 
 	// update nodes linked lists (in place)
 	mu.Lock()
@@ -256,8 +357,9 @@ func (g *GUI) Update(d Data) {
 		updateDataList(g.dataConnectionsList, float64(d.Connections), g.dataConnections, lenConnChart)
 	}
 	if d.NodesTotal > 0 {
-		g.infoNodesTotal = d.NodesTotal
-		updateDataList(g.dataNodesTotalList, float64(d.NodesTotal), g.dataNodesTotal, lenNodesChart)
+		// g.infoNodesTotal = d.NodesTotal
+		g.dataNodesTotal.AddFloat(float64(d.NodesTotal))
+		// updateDataList(g.dataNodesTotalList, float64(d.NodesTotal), g.dataNodesTotal, lenNodesChart)
 	}
 	if d.NodesQueued > 0 {
 		g.infoNodesQueued = d.NodesQueued
@@ -287,7 +389,7 @@ func (g *GUI) Log(log string) {
 
 func (g *GUI) getInfo() [][]string {
 	return [][]string{
-		{"Total nodes", fmt.Sprintf("%d", g.infoNodesTotal)},
+		{"Total nodes", fmt.Sprintf("%d", g.dataNodesTotal.GetLastNum())},
 		{"Good nodes", fmt.Sprintf("%d", g.infoNodesGood)},
 		{"Dead nodes", fmt.Sprintf("%d", g.infoNodesDead)},
 		{"Queue", fmt.Sprintf("%d", g.infoNodesQueued)},
@@ -297,6 +399,7 @@ func (g *GUI) getInfo() [][]string {
 	}
 }
 
+// update linked list with new data and copy it to the slice
 func updateDataList[T any](l *list.List, val T, mirror []T, limit int) {
 	switch v := any(val).(type) {
 	case float64:
@@ -313,25 +416,23 @@ func updateDataList[T any](l *list.List, val T, mirror []T, limit int) {
 		l.Remove(l.Front())
 	}
 	// copy list elements to the slice
-	updateSlice(mirror, l, limit)
-}
-
-func updateSlice[T any](s []T, l *list.List, limit int) {
-	i := 0
+	// updateSlice(mirror, l, limit)
 	// loop from back to front and update slice accordingly
+	i := 0
 	for e := l.Back(); e != nil; e = e.Prev() {
 		if i >= limit {
 			break
 		}
 		idx := limit - 1 - i
-		if idx >= len(s) {
+		if idx >= len(mirror) {
 			break
 		}
-		s[idx] = e.Value.(T)
+		mirror[idx] = e.Value.(T)
 		i++
 	}
 }
 
+// update titles
 func updateTitleChart(data int, chart *widgets.SparklineGroup, title string) {
 	if data > 0 {
 		title += fmt.Sprintf(": %d", data)

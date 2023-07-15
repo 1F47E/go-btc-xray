@@ -21,11 +21,11 @@ var newAddrCh = make(chan []string, 100)
 type Client struct {
 	log   *logger.Logger
 	nodes map[string]*node.Node
-	guiCh chan gui.Data
+	guiCh chan gui.IncomingData
 }
 
 // initial nodes from DNS
-func NewClient(log *logger.Logger, guiCh chan gui.Data) *Client {
+func NewClient(log *logger.Logger, guiCh chan gui.IncomingData) *Client {
 	c := Client{
 		log:   log,
 		nodes: make(map[string]*node.Node),
@@ -170,7 +170,7 @@ func (c *Client) nodesUpdater() {
 		}
 		mu.Unlock()
 		// updat edata to gui
-		c.guiCh <- gui.Data{
+		c.guiCh <- gui.IncomingData{
 			Connections: connections,
 			NodesTotal:  len(c.nodes),
 			NodesQueued: queued,
