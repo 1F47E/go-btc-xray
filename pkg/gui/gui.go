@@ -164,11 +164,6 @@ func (g *GUI) Start() {
 	grid.Set(
 		// conn + stats + nodes
 		tui.NewRow(0.25,
-			// tui.NewCol(0.2, chartConnGroup), // conn
-			// tui.NewRow(0.2,
-			// 	tui.NewCol(0.2, stats),          // stats
-			// 	tui.NewCol(0.2, chartConnGroup), // conn
-			// ),
 			tui.NewCol(0.2, stats),
 			tui.NewCol(0.2, chartNodesTotal),
 			tui.NewCol(0.2, chartNodesQueue),

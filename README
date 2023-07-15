@@ -1,11 +1,32 @@
-Custom implementation of bitcoin protocol
+ __  __     ______     ______     __  __    
+/\_\_\_\   /\  == \   /\  __ \   /\ \_\ \   
+\/_/\_\/_  \ \  __<   \ \  __ \  \ \____ \  
+  /\_\/\_\  \ \_\ \_\  \ \_\ \_\  \/\_____\ 
+  \/_/\/_/   \/_/ /_/   \/_/\/_/   \/_____/ 
+
+Bitcoin peers scanner
+
+X-Ray is an open-source tool written in Go for real-time scanning of Bitcoin peers. 
+
+Features
+- resolves seed nodes via DNS, 
+- connects to nodes, performs handshake dance (version, verack, ping), 
+- retrieves more node addresses from peers, 
+
+
+Environment variables
+DEBUG=1 - enables debug mode logging (by default logging level is info)
+GUI=0 - disables GUI (by default GUI is enabled)
+TESTNET=1 - enables testnet mode (by default mainnet is used)
 
 
 TODO:
 - [x] resolve seed nodes via dns
 - [x] connect to nodes
 - [x] do handshake (version, verack, ping)
+- [x] get addr from peer
+- [x] update and store peers
+- [x] CLI GUI
 - [ ] gracefull shutdown
-- [ ] get addr from peer
-- [ ] update and store peers
-- [ ] API to get peers
+- [ ] DB
+- [ ] API server
