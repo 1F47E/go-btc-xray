@@ -50,6 +50,7 @@ func main() {
 			log.Fatalf("no node addresses found")
 		}
 		log.Debugf("dns scan found %d nodes", len(addrs))
+		// disabled for gui debugging
 		c.AddNodes(addrs)
 	}()
 
@@ -84,7 +85,7 @@ func main() {
 	// 		}
 	// 	}
 	// }()
-	// // send fake nodes total to debug
+	// send fake nodes total to debug
 	// go func() {
 	// 	for {
 	// 		time.Sleep(200 * time.Millisecond)

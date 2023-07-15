@@ -19,6 +19,9 @@ DEBUG=1 - enables debug mode logging (by default logging level is info)
 GUI=0 - disables GUI (by default GUI is enabled)
 TESTNET=1 - enables testnet mode (by default mainnet is used)
 
+Docs
+https://en.bitcoin.it/wiki/Protocol_documentation
+
 
 TODO:
 - [x] resolve seed nodes via dns

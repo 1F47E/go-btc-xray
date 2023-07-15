@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"go-btc-downloader/pkg/config"
 	"log"
+	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +20,7 @@ var mu sync.Mutex = sync.Mutex{}
 
 const lenLogs = 20
 const lenConnChart = 14
-const lenNodesChart = 40
+const lenNodesChart = 32
 
 type Data struct {
 	Connections int
@@ -210,6 +212,7 @@ func (g *GUI) Start() {
 			chartConnWrap.Sparklines[0].Data = g.dataConnections
 
 			// nodes chart
+			// chartNodesTotal.Data[0] = g.dataNodesTotal.Data()
 			chartNodesTotal.Data[0] = g.dataNodesTotal
 			chartNodesQueue.Data[0] = g.dataNodesQueued
 			chartNodesGood.Data[0] = g.dataNodesGood
@@ -225,15 +228,16 @@ func (g *GUI) Start() {
 			// update info
 			stats.Rows = g.getInfo()
 
-			// debug info
-			// msg := fmt.Sprintf("dataNodesTotal: len %d, cap %d\n", len(g.dataNodesTotal), cap(g.dataNodesTotal))
-			// msg += fmt.Sprintf("dataNodesTotalLL: %d\n", g.dataNodesTotalList.Len())
-			// msg += fmt.Sprintf("chartQueue.Data len: %d, cap: %d\n", len(chartNodesQueue.Data), cap(chartNodesQueue.Data))
-			// msg += fmt.Sprintf("chartQueue.Data[0] len: %d, cap: %d\n", len(chartNodesQueue.Data[0]), cap(chartNodesQueue.Data[0]))
-			// msg += fmt.Sprintf("chartConn: len %d, cap %d\n", len(chartConnGroup.Sparklines[0].Data), cap(chartConnGroup.Sparklines[0].Data))
-			// msg += fmt.Sprintf("chartConn data len: %d, cap: %d\n", len(g.dataConnections), cap(g.dataConnections))
-			// msg += fmt.Sprint("data: ", g.dataConnections)
-			// p.Text = msg
+			// debug info to logs
+			if os.Getenv("LOGS") == "2" {
+				msg := fmt.Sprintf("dataNodesTotal: len %d, cap %d\n", len(g.dataNodesTotal), cap(g.dataNodesTotal))
+				msg += fmt.Sprintf("dataNodesTotalLL: %d\n", g.dataNodesTotalList.Len())
+				// report G count and memory used
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
+				msg += fmt.Sprintf("STATS: G:%d, MEM:%dKb\n", runtime.NumGoroutine(), m.Alloc/1024)
+				p.Text = msg
+			}
 			tui.Render(grid)
 			tickerCount++
 		}
@@ -244,37 +248,28 @@ func (g *GUI) Start() {
 // in serial data (charts) we push new data to the linked lists first
 // and then construct slices from the linked lists
 func (g *GUI) Update(d Data) {
-	// update connection data
-	updateDataList(g.dataConnectionsList, float64(d.Connections), lenConnChart)
-	updateSlice(g.dataConnections, g.dataConnectionsList, lenConnChart)
-	g.infoConnections = d.Connections
 
 	// update nodes linked lists (in place)
-	updateDataList(g.dataNodesTotalList, float64(d.NodesTotal), lenNodesChart)
-	updateDataList(g.dataNodesQueuedList, float64(d.NodesQueued), lenNodesChart)
-	updateDataList(g.dataNodesGoodList, float64(d.NodesGood), lenNodesChart)
-	updateDataList(g.dataNodesDeadList, float64(d.NodesDead), lenNodesChart)
-
-	// update slices in placj
-	updateSlice(g.dataNodesTotal, g.dataNodesTotalList, lenNodesChart)
-	updateSlice(g.dataNodesQueued, g.dataNodesQueuedList, lenNodesChart)
-	updateSlice(g.dataNodesGood, g.dataNodesGoodList, lenNodesChart)
-	updateSlice(g.dataNodesDead, g.dataNodesDeadList, lenNodesChart)
-
+	mu.Lock()
 	if d.Connections > 0 {
 		g.infoConnections = d.Connections
+		updateDataList(g.dataConnectionsList, float64(d.Connections), g.dataConnections, lenConnChart)
 	}
 	if d.NodesTotal > 0 {
 		g.infoNodesTotal = d.NodesTotal
+		updateDataList(g.dataNodesTotalList, float64(d.NodesTotal), g.dataNodesTotal, lenNodesChart)
 	}
 	if d.NodesQueued > 0 {
 		g.infoNodesQueued = d.NodesQueued
+		updateDataList(g.dataNodesQueuedList, float64(d.NodesQueued), g.dataNodesQueued, lenNodesChart)
 	}
 	if d.NodesGood > 0 {
 		g.infoNodesGood = d.NodesGood
+		updateDataList(g.dataNodesGoodList, float64(d.NodesGood), g.dataNodesGood, lenNodesChart)
 	}
 	if d.NodesDead > 0 {
 		g.infoNodesDead = d.NodesDead
+		updateDataList(g.dataNodesDeadList, float64(d.NodesDead), g.dataNodesDead, lenNodesChart)
 	}
 	if d.MsgIn > 0 {
 		g.infoMsgIn = d.MsgIn
@@ -282,11 +277,12 @@ func (g *GUI) Update(d Data) {
 	if d.MsgOut > 0 {
 		g.infoMsgOut = d.MsgOut
 	}
+	mu.Unlock()
 
 }
 
 func (g *GUI) Log(log string) {
-	updateDataList(g.logsList, log, lenLogs)
+	updateDataList(g.logsList, log, g.logs, lenLogs)
 	updateSlice(g.logs, g.logsList, lenLogs)
 }
 
@@ -302,10 +298,8 @@ func (g *GUI) getInfo() [][]string {
 	}
 }
 
-func updateDataList[T any](l *list.List, data T, limit int) {
-	mu.Lock()
-	defer mu.Unlock()
-	switch v := any(data).(type) {
+func updateDataList[T any](l *list.List, val T, mirror []T, limit int) {
+	switch v := any(val).(type) {
 	case float64:
 		if v == 0 {
 			return
@@ -315,15 +309,15 @@ func updateDataList[T any](l *list.List, data T, limit int) {
 			return
 		}
 	}
-	l.PushBack(T(data))
+	l.PushBack(T(val))
 	if l.Len() > limit {
 		l.Remove(l.Front())
 	}
+	// copy list elements to the slice
+	updateSlice(mirror, l, limit)
 }
 
 func updateSlice[T any](s []T, l *list.List, limit int) {
-	mu.Lock()
-	defer mu.Unlock()
 	i := 0
 	// loop from back to front and update slice accordingly
 	for e := l.Back(); e != nil; e = e.Prev() {
