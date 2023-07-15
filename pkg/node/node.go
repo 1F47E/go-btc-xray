@@ -22,7 +22,7 @@ const (
 )
 
 type Node struct {
-	addr      net.TCPAddr
+	ip        string
 	conn      net.Conn
 	pingNonce uint64
 	pingCount uint8
@@ -32,10 +32,18 @@ type Node struct {
 	newAddrCh chan []string
 }
 
-func NewNode(addr net.TCPAddr, newAddrCh chan []string) *Node {
+func NewNode(ip string, newAddrCh chan []string) *Node {
 	return &Node{
-		addr:      addr,
+		ip:        ip,
 		newAddrCh: newAddrCh,
+	}
+}
+
+// NOT USED
+func (n *Node) Resolve() {
+	_, err := net.ResolveTCPAddr("tcp", n.ip)
+	if err != nil {
+		n.status = Dead
 	}
 }
 
@@ -68,21 +76,17 @@ func (n *Node) IsGood() bool {
 	return n.isGood
 }
 
-func (n *Node) IP() net.IP {
-	return n.addr.IP
-}
-
 func (n *Node) Endpoint() string {
-	return fmt.Sprintf("%s:%d", n.addr.IP.String(), n.addr.Port)
+	return fmt.Sprintf("%s:%d", n.ip, cfg.NodesPort)
 }
 
 // wrapper with brackets for ipv6
 func (n *Node) EndpointSafe() string {
-	return fmt.Sprintf("[%s]:%d", n.addr.IP.String(), n.addr.Port)
+	return fmt.Sprintf("[%s]:%d", n.ip, cfg.NodesPort)
 }
 
 func (n *Node) Connect() {
-	a := fmt.Sprintf("▶︎ %s", n.IP())
+	a := fmt.Sprintf("▶︎ %s", n.ip)
 	log.Debugf("%s connecting...\n", a)
 	defer func() {
 		n.conn = nil

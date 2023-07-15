@@ -33,17 +33,17 @@ func New(log *logger.Logger) *DNS {
 }
 
 func (d *DNS) Scan() ([]string, error) {
-	for {
-		d.log.Info("scanning dns seeds")
-		time.Sleep(1 * time.Second)
-		d.log.Debugf("dns seeds: %v", d.dnsSeeds)
-		time.Sleep(1 * time.Second)
-		d.log.Warn("scanning dns seeds test warning")
-		time.Sleep(1 * time.Second)
-		d.log.Error("scanning dns seeds test error")
-		time.Sleep(1 * time.Second)
-	}
-	return nil, nil
+	// for {
+	// 	d.log.Info("scanning dns seeds")
+	// 	time.Sleep(1 * time.Second)
+	// 	d.log.Debugf("dns seeds: %v", d.dnsSeeds)
+	// 	time.Sleep(1 * time.Second)
+	// 	d.log.Warn("scanning dns seeds test warning")
+	// 	time.Sleep(1 * time.Second)
+	// 	d.log.Error("scanning dns seeds test error")
+	// 	time.Sleep(1 * time.Second)
+	// }
+	// return nil, nil
 	ret := make([]string, 0)
 	for _, seed := range d.dnsSeeds {
 		m := new(dns.Msg)
@@ -65,8 +65,7 @@ func (d *DNS) Scan() ([]string, error) {
 			if _, ok := ans.(*dns.A); !ok {
 				continue
 			}
-			addr := fmt.Sprintf("[%s]:%d", ans.(*dns.A).A.String(), cfg.NodesPort)
-			ret = append(ret, addr)
+			ret = append(ret, ans.(*dns.A).A.String())
 		}
 		d.log.Infof("got %v nodes from %v", len(in.Answer), seed)
 	}

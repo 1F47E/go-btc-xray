@@ -17,7 +17,7 @@ var cfg = config.New()
 var mu sync.Mutex = sync.Mutex{}
 
 const lenLogs = 20
-const lenConnChart = 30
+const lenConnChart = 14
 const lenNodesChart = 40
 
 type Data struct {
@@ -93,7 +93,7 @@ func (g *GUI) Start() {
 	g0 := widgets.NewGauge()
 	g0.Title = "Progress"
 	g0.Percent = 20
-	g0.BarColor = tui.ColorGreen
+	g0.BarColor = tui.ColorBlue
 	g0.BorderStyle.Fg = tui.ColorWhite
 	g0.Label = fmt.Sprintf("%d/%d", 20, 100)
 	g0.LabelStyle = tui.NewStyle(tui.ColorWhite)
@@ -101,7 +101,7 @@ func (g *GUI) Start() {
 	// CONNECTIONS
 	chartConn := widgets.NewSparkline()
 	// max connections
-	chartConn.MaxVal = float64(g.maxConnections)
+	chartConn.MaxVal = float64(g.maxConnections) * 1.2 // height hack
 	chartConn.Data = []float64{0}
 	chartConn.LineColor = tui.ColorMagenta
 	chartConn.TitleStyle.Fg = tui.ColorWhite

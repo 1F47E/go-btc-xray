@@ -23,7 +23,6 @@ func (n *Node) listen() {
 		if n.conn == nil || n.status != Connected {
 			return
 		}
-		fmt.Println()
 		cnt, msg, rawPayload, err := wire.ReadMessageN(n.conn, cfg.Pver, cfg.Btcnet)
 		// cnt, msg, rawPayload, err := wire.ReadMessageWithEncodingN(n.Conn, cfg.Pver, cfg.Btcnet, wire.BaseEncoding)
 		if err != nil {
@@ -91,7 +90,7 @@ func (n *Node) listen() {
 			log.Debugf("%s got %d addresses\n", a, len(m.AddrList))
 			batch := make([]string, len(m.AddrList))
 			for i, a := range m.AddrList {
-				batch[i] = fmt.Sprintf("[%s]:%d", a.Addr.String(), a.Port)
+				batch[i] = a.Addr.String()
 			}
 			n.newAddrCh <- batch
 			n.Disconnect()

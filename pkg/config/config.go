@@ -39,10 +39,10 @@ func New() *Config {
 		Pver:       wire.ProtocolVersion, // 70016
 		// Pver: 70013,
 	}
-	if os.Getenv("DEBGUG") == "1" {
+	if os.Getenv("DEBUG") == "1" {
 		cfg.ConnectionsLimit = 10
 	} else {
-		cfg.ConnectionsLimit = 100
+		cfg.ConnectionsLimit = 50
 	}
 	if os.Getenv("TESTNET") == "1" {
 		cfg.Network = NetworkTestnet
