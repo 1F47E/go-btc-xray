@@ -38,7 +38,13 @@ type Config struct {
 func New() *Config {
 	cfg := &Config{
 		// var dnsAddress = "1.1.1.1:53" // cloudflare dns, 2x slower
-		DnsAddress:     "8.8.8.8:53",
+		// google dns
+		// DnsAddress:     "8.8.8.8:53",
+		// cloudflare dns
+		DnsAddress: "1.1.1.1:53",
+		// quad dns
+		// DnsAddress:     "9.9.9.9:53",
+
 		Pver:           wire.ProtocolVersion, // 70016
 		NodeTimeout:    5 * time.Second,
 		PingInterval:   1 * time.Minute,

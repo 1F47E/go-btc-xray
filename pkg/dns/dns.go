@@ -2,7 +2,6 @@
 package dns
 
 import (
-	"fmt"
 	"go-btc-downloader/pkg/config"
 	"go-btc-downloader/pkg/logger"
 	"time"
@@ -32,42 +31,51 @@ func New(log *logger.Logger) *DNS {
 	}
 }
 
-func (d *DNS) Scan() ([]string, error) {
-	// for {
-	// 	d.log.Info("scanning dns seeds")
-	// 	time.Sleep(1 * time.Second)
-	// 	d.log.Debugf("dns seeds: %v", d.dnsSeeds)
-	// 	time.Sleep(1 * time.Second)
-	// 	d.log.Warn("scanning dns seeds test warning")
-	// 	time.Sleep(1 * time.Second)
-	// 	d.log.Error("scanning dns seeds test error")
-	// 	time.Sleep(1 * time.Second)
-	// }
-	// return nil, nil
-	ret := make([]string, 0)
+func (d *DNS) Scan() []string {
+	ips := make(map[string]struct{}, 0)
+	c := new(dns.Client)
+	m := new(dns.Msg)
+	c.Net = "tcp"
 	for _, seed := range d.dnsSeeds {
-		m := new(dns.Msg)
-		m.SetQuestion(dns.Fqdn(seed), dns.TypeA)
-		c := new(dns.Client)
-		c.Net = "tcp"
+		d.log.Debugf("[DNS]:[%s] asking for nodes\n", seed)
 		c.Timeout = cfg.DnsTimeout
+		m.SetQuestion(dns.Fqdn(seed), dns.TypeA)
 		in, _, err := c.Exchange(m, d.dnsServer)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get nodes from %v: %v", seed, err)
+			d.log.Warnf("[DNS]:[%s] error %v\n", seed, err)
+			continue
 		}
 		if len(in.Answer) == 0 {
-			d.log.Warnf("no nodes found from %v", seed)
+			d.log.Warnf("[DNS]:[%s] no nodes found\n", seed)
 			continue
 		}
 		// loop through dns records
+		new := 0
 		for _, ans := range in.Answer {
 			// check that record is valid
 			if _, ok := ans.(*dns.A); !ok {
+				d.log.Warnf("[DNS]:[%s] invalid dns record, skipping\n", seed)
 				continue
 			}
-			ret = append(ret, ans.(*dns.A).A.String())
+			// only add new ones
+			ip := ans.(*dns.A).A.String()
+			if _, ok := ips[ip]; ok {
+				d.log.Debugf("[DNS]:[%s] got duplicate ip %v\n", seed, ip)
+				continue
+			}
+			ips[ip] = struct{}{}
+			new++
 		}
-		d.log.Infof("got %v nodes from %v", len(in.Answer), seed)
+		if new > 0 {
+			d.log.Debugf("[DNS]:[%s] found %d new nodes\n", seed, new)
+		} else {
+			d.log.Debugf("[DNS]:[%s] no new nodes\n", seed)
+		}
 	}
-	return ret, nil
+	d.log.Debugf("[DNS]: finished scan. Got %d nodes from %d seeds\n", len(ips), len(d.dnsSeeds))
+	ret := make([]string, 0, len(ips))
+	for ip := range ips {
+		ret = append(ret, ip)
+	}
+	return ret
 }

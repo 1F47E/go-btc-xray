@@ -12,8 +12,8 @@ import (
 )
 
 func main() {
-	// do not block, sending gui updated
-	guiCh := make(chan gui.IncomingData, 10)
+	// do not block, sending gui updates
+	guiCh := make(chan gui.IncomingData, 42)
 	log := logger.New(guiCh)
 
 	// context for graceful shutdown
@@ -30,7 +30,6 @@ func main() {
 	// start client and listen for new nodes to connect
 	c := client.NewClient(ctx, log, guiCh)
 	go c.Start()
-	log.Debugf("client started")
 
 	// DNS SCAN
 	// if not debugging gui
@@ -38,14 +37,10 @@ func main() {
 		// scan seed nodes, add them to the client
 		go func() {
 			d := dns.New(log)
-			addrs, err := d.Scan()
-			if err != nil {
-				log.Fatalf("failed to scan nodes: %v", err)
-			}
+			addrs := d.Scan()
 			if len(addrs) == 0 {
-				log.Fatalf("no node addresses found")
+				log.Fatalf("no seed nodes found")
 			}
-			log.Debugf("dns scan found %d nodes", len(addrs))
 			c.AddNodes(addrs)
 		}()
 	}
@@ -62,6 +57,7 @@ func main() {
 	}()
 	// blocking, waiting for all the goroutines to exit
 	<-ctx.Done()
+	log.Debugf("context canceled, exiting")
 	log.ResetToStdout()
 	// exit from GUI
 	if ui != nil {

@@ -76,22 +76,7 @@ func (l *Logger) Close() error {
 	return nil
 }
 
-// TODO: write to websockets
-func (l *Logger) Ship(t level, args ...interface{}) {
-	if l.guiCh != nil {
-		msg := fmt.Sprintf("%s: ", t)
-		msg += fmt.Sprint(args...)
-		l.guiCh <- gui.IncomingData{Log: msg}
-	}
-}
-
-func (l *Logger) Shipf(t level, format string, args ...interface{}) {
-	if l.guiCh != nil {
-		msg := fmt.Sprintf("%s: ", t)
-		msg += fmt.Sprintf(format, args...)
-		l.guiCh <- gui.IncomingData{Log: msg}
-	}
-}
+// ===== logrus wrapper
 
 // debug
 func (l *Logger) Debug(args ...interface{}) {
@@ -146,4 +131,25 @@ func (l *Logger) Fatal(args ...interface{}) {
 func (l *Logger) Fatalf(format string, args ...interface{}) {
 	l.Logger.Fatalf(format, args...)
 	l.Shipf(Fatal, format, args...)
+}
+
+// ===== Ship logs to the chan to be displayed in the GUI
+
+func (l *Logger) Ship(t level, args ...interface{}) {
+	msg := fmt.Sprintf("%s: ", t)
+	msg += fmt.Sprint(args...)
+	l.ship(msg)
+}
+
+func (l *Logger) Shipf(t level, format string, args ...interface{}) {
+	msg := fmt.Sprintf("%s: ", t)
+	msg += fmt.Sprintf(format, args...)
+	l.ship(msg)
+}
+
+// ship to gui logs chan if it's not full
+func (l *Logger) ship(msg string) {
+	if l.guiCh != nil && len(l.guiCh) < cap(l.guiCh) {
+		l.guiCh <- gui.IncomingData{Log: msg}
+	}
 }

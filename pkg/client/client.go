@@ -26,7 +26,6 @@ type Client struct {
 	guiCh chan gui.IncomingData
 }
 
-// initial nodes from DNS
 func NewClient(ctx context.Context, log *logger.Logger, guiCh chan gui.IncomingData) *Client {
 	c := Client{
 		ctx:   ctx,
@@ -38,15 +37,18 @@ func NewClient(ctx context.Context, log *logger.Logger, guiCh chan gui.IncomingD
 }
 
 func (c *Client) AddNodes(ips []string) {
-	c.log.Debugf("[CLIENT]: adding %d nodes\n", len(ips))
-	nodes := make([]*node.Node, 0)
+	c.log.Debugf("[CLIENT]: got batch of %d nodes\n", len(ips))
+	cnt := 1
 	for _, ip := range ips {
-		n := node.NewNode(ip, newAddrCh)
-		nodes = append(nodes, n)
+		if _, ok := c.nodes[ip]; ok {
+			continue
+		}
+		mu.Lock()
+		c.nodes[ip] = node.NewNode(ip, newAddrCh)
+		mu.Unlock()
+		cnt++
 	}
-	for _, n := range nodes {
-		c.nodes[n.Endpoint()] = n
-	}
+	c.log.Debugf("[CLIENT]: got %d nodes from %d batch\n", cnt, len(ips))
 }
 
 func (c *Client) Nodes() map[string]*node.Node {
@@ -79,9 +81,13 @@ func (c *Client) Start() {
 func (c *Client) Stop() {
 	c.log.Debug("[CLIENT]: disconnecting...")
 	defer c.log.Debug("[CLIENT]: exited")
+	cnt := 0
 	for _, n := range c.nodes {
-		n.Disconnect()
+		if n.Disconnect() {
+			cnt++
+		}
 	}
+	c.log.Debugf("[CLIENT]: disconnected %d nodes", cnt)
 }
 
 // ===== WORKERS
@@ -96,19 +102,7 @@ func (c *Client) wNodesListner() {
 		case <-c.ctx.Done():
 			return
 		case ips := <-newAddrCh:
-			c.log.Debugf("[CLIENT]: LISTENER: received batch of %d nodes\n", len(ips))
-			// update nodes map with new ips
-			cnt := 0
-			mu.Lock()
-			for _, ip := range ips {
-				if _, ok := c.nodes[ip]; ok {
-					continue
-				}
-				c.nodes[ip] = node.NewNode(ip, newAddrCh)
-				cnt++
-			}
-			mu.Unlock()
-			c.log.Debugf("[CLIENT]: LISTENER: %d new\n", cnt)
+			c.AddNodes(ips)
 		}
 	}
 }
@@ -120,7 +114,7 @@ func (c *Client) wNodesConnector() {
 
 	// check if we have enough connections and connect to the nodes
 	limit := cfg.ConnectionsLimit // connection pool
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(3 * time.Second)
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -141,6 +135,7 @@ func (c *Client) wNodesConnector() {
 				}
 			}
 			mu.Unlock()
+			c.log.Infof("[CLIENT]: CONN: total nodes %d\n", len(c.nodes))
 			c.log.Infof("[CLIENT]: CONN: %d/%d nodes connected\n", connectedCnt, limit)
 			c.log.Infof("[CLIENT]: CONN: %d nodes in waitlist\n", len(waitlist))
 			c.log.Infof("[CLIENT]: CONN: connecting to %d nodes\n", left)
@@ -151,6 +146,9 @@ func (c *Client) wNodesConnector() {
 					}
 					go waitlist[i].Connect(c.ctx)
 				}
+			}
+			if len(waitlist) == 0 && connectedCnt == 0 {
+				c.log.Warn("[CLIENT]: CONN: no nodes to connect, exit?")
 			}
 			// TODO: exit when there is no more nodes to connect to
 			// exit if done
@@ -176,10 +174,10 @@ func (c *Client) wNodesUpdater() {
 		case <-c.ctx.Done():
 			return
 		case <-ticker.C:
-			if len(c.nodes) == 0 {
-				c.log.Warn("[CLIENT] STAT no nodes, exit")
-				continue
-			}
+			// if len(c.nodes) == 0 {
+			// 	c.log.Warn("[CLIENT] STAT no nodes, exit")
+			// 	continue
+			// }
 
 			// filter good nodes
 			good := make([]*node.Node, 0)

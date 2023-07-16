@@ -48,12 +48,15 @@ func (n *Node) Resolve() {
 	}
 }
 
-func (n *Node) Disconnect() {
+// returns true if connection was closed
+func (n *Node) Disconnect() bool {
 	if n.conn != nil {
 		n.conn.Close()
 		n.conn = nil
+		n.status = Disconnected // TODO: remove?
+		return true
 	}
-	n.status = Disconnected
+	return false
 }
 
 func (n *Node) IsNew() bool {
@@ -153,24 +156,28 @@ func (n *Node) Connect(ctx context.Context) {
 	log.Debugf("%s OK\n", a)
 
 	// send pings
-	// time.Sleep(1 * time.Second)
-	// for {
-	// 	if n.conn == nil {
-	// 		log.Debugf("%s disconnected\n", a)
-	// 		return
-	// 	}
-	// 	if n.pingCount >= 1 {
-	// 		log.Debugf("%s ping count reached\n", a)
-	// 		return
-	// 	}
-	// 	log.Debugf("%s sending ping...\n", a)
-	// 	n.UpdateNonce()
-	// 	err = cmd.SendPing(n.conn, n.pingNonce)
-	// 	if err != nil {
-	// 		log.Debugf("%s failed to write ping: %v\n", a, err)
-	// 		return
-	// 	}
-	// 	log.Debugf("%s OK\n", a)
-	// 	time.Sleep(1 * time.Minute)
-	// }
+	ticker := time.NewTicker(1 * time.Minute)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if n.conn == nil {
+				log.Debugf("%s disconnected\n", a)
+				return
+			}
+			if n.pingCount >= 1 {
+				log.Debugf("%s ping count reached\n", a)
+				return
+			}
+			log.Debugf("%s sending ping...\n", a)
+			n.UpdateNonce()
+			err = cmd.SendPing(n.conn, n.pingNonce)
+			if err != nil {
+				log.Debugf("%s failed to write ping: %v\n", a, err)
+				return
+			}
+			log.Debugf("%s OK\n", a)
+		}
+	}
 }
