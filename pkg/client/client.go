@@ -44,7 +44,7 @@ func (c *Client) AddNodes(ips []string) {
 			continue
 		}
 		mu.Lock()
-		c.nodes[ip] = node.NewNode(ip, newAddrCh)
+		c.nodes[ip] = node.NewNode(c.log, ip, newAddrCh)
 		mu.Unlock()
 		cnt++
 	}
@@ -55,16 +55,43 @@ func (c *Client) Nodes() map[string]*node.Node {
 	return c.nodes
 }
 
+func (c *Client) NodesQueue() []*node.Node {
+	nodes := make([]*node.Node, 0)
+	mu.Lock()
+	for _, n := range c.nodes {
+		if n.IsNew() {
+			nodes = append(nodes, n)
+		}
+	}
+	mu.Unlock()
+	return nodes
+}
+
+func (c *Client) GetFromQueue(num int) []*node.Node {
+	ret := make([]*node.Node, 0)
+	queue := c.NodesQueue()
+	if len(queue) == 0 {
+		return ret
+	}
+	for i, n := range queue {
+		if len(ret) == num || i == len(queue)-1 {
+			break
+		}
+		ret = append(ret, n)
+	}
+	return ret
+}
+
 func (c *Client) NodesCnt() int {
 	return len(c.nodes)
 }
 
-// count connected nodes
-func (c *Client) ConnectedNodesCnt() int {
+// count busy nodes - connecting and connected status
+func (c *Client) NodesBusyCnt() int {
 	cnt := 0
 	mu.Lock()
 	for _, node := range c.nodes {
-		if node.IsConnected() {
+		if node.IsConnected() || node.IsConnecting() {
 			cnt++
 		}
 	}
@@ -87,7 +114,7 @@ func (c *Client) Stop() {
 			cnt++
 		}
 	}
-	c.log.Debugf("[CLIENT]: disconnected %d nodes", cnt)
+	c.log.Debugf("[CLIENT]: disconnected %d nodes\n", cnt)
 }
 
 // ===== WORKERS
@@ -120,34 +147,26 @@ func (c *Client) wNodesConnector() {
 		case <-c.ctx.Done():
 			return
 		case <-ticker.C:
-			connectedCnt := c.ConnectedNodesCnt()
+			// get connecting and connected nodes
+			connectedCnt := c.NodesBusyCnt()
 			left := limit - connectedCnt
 			// connect only if have slot
 			if left <= 0 {
 				continue
 			}
-			// select node to connect to
-			waitlist := make([]*node.Node, 0)
-			mu.Lock()
-			for _, node := range c.nodes {
-				if node.IsNew() {
-					waitlist = append(waitlist, node)
-				}
+			c.log.Infof("[CLIENT]: CONN: total nodes %d", len(c.nodes))
+			c.log.Infof("[CLIENT]: CONN: %d/%d nodes connected", connectedCnt, limit)
+			// get nodes to connect to
+			pool := c.GetFromQueue(left)
+			if len(pool) == 0 {
+				c.log.Debugf("[CLIENT]: CONN: no nodes to connect")
+				continue
 			}
-			mu.Unlock()
-			c.log.Infof("[CLIENT]: CONN: total nodes %d\n", len(c.nodes))
-			c.log.Infof("[CLIENT]: CONN: %d/%d nodes connected\n", connectedCnt, limit)
-			c.log.Infof("[CLIENT]: CONN: %d nodes in waitlist\n", len(waitlist))
-			c.log.Infof("[CLIENT]: CONN: connecting to %d nodes\n", left)
-			if left > 0 && len(waitlist) > 0 {
-				for i := 0; i <= left; i++ {
-					if i >= len(waitlist) {
-						break
-					}
-					go waitlist[i].Connect(c.ctx)
-				}
+			c.log.Infof("[CLIENT]: CONN: connecting to %d nodes", len(pool))
+			for _, n := range pool {
+				go n.Connect(c.ctx)
 			}
-			if len(waitlist) == 0 && connectedCnt == 0 {
+			if len(pool) == 0 && connectedCnt == 0 {
 				c.log.Warn("[CLIENT]: CONN: no nodes to connect, exit?")
 			}
 			// TODO: exit when there is no more nodes to connect to
@@ -174,14 +193,11 @@ func (c *Client) wNodesUpdater() {
 		case <-c.ctx.Done():
 			return
 		case <-ticker.C:
-			// if len(c.nodes) == 0 {
-			// 	c.log.Warn("[CLIENT] STAT no nodes, exit")
-			// 	continue
-			// }
 
 			// filter good nodes
+			// TODO: refactor this
 			good := make([]*node.Node, 0)
-			var dead, connected, connections, queued int
+			var dead, queued int
 			mu.Lock()
 			for _, node := range c.nodes {
 				if node.IsNew() {
@@ -193,23 +209,25 @@ func (c *Client) wNodesUpdater() {
 				if node.IsDead() {
 					dead++
 				}
-				if node.IsConnected() {
-					connected++
-				}
-				if node.HasConnection() {
-					connections++
-				}
+				// if node.IsConnected() {
+				// 	connected++
+				// }
+				// if node.HasConnection() {
+				// 	connections++
+				// }
 			}
 			mu.Unlock()
+
+			cntBusy := c.NodesBusyCnt() // count busy nodes - connecting and connected status
 			// updat edata to gui
 			c.guiCh <- gui.IncomingData{
-				Connections: connections,
+				Connections: cntBusy,
 				NodesTotal:  len(c.nodes),
 				NodesQueued: queued,
 				NodesGood:   len(good),
 				NodesDead:   dead,
 			}
-			c.log.Infof("[CLIENT]: STAT: total:%d, connected:%d(%d conn), dead:%d, good:%d\n", len(c.nodes), connected, connections, dead, len(good))
+			c.log.Debugf("[CLIENT]: STAT: total:%d, connected:%d/%d, dead:%d, good:%d\n", len(c.nodes), cntBusy, cfg.ConnectionsLimit, dead, len(good))
 			// report G count and memory used
 			var m runtime.MemStats
 			runtime.ReadMemStats(&m)
@@ -223,7 +241,7 @@ func (c *Client) wNodesUpdater() {
 					continue
 				}
 
-				c.log.Infof("[CLIENT] STAT: saved %d node to %v\n", len(good), cfg.GoodNodesDB)
+				c.log.Debugf("[CLIENT] STAT: saved %d node to %v\n", len(good), cfg.GoodNodesDB)
 			}
 		}
 	}
