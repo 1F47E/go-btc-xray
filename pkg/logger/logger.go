@@ -3,6 +3,7 @@ package logger
 // import logrus
 import (
 	"fmt"
+	"go-btc-downloader/pkg/gui"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -22,10 +23,10 @@ const (
 
 type Logger struct {
 	*logrus.Logger
-	guiLogsCh chan string
+	guiCh chan gui.IncomingData
 }
 
-func New(guiCh chan string) *Logger {
+func New(guiCh chan gui.IncomingData) *Logger {
 	log := logrus.New()
 	// format := &logrus.TextFormatter{}
 	var format logrus.TextFormatter
@@ -65,18 +66,18 @@ func (l *Logger) Close() error {
 
 // TODO: write to websockets
 func (l *Logger) Ship(t level, args ...interface{}) {
-	if l.guiLogsCh != nil {
+	if l.guiCh != nil {
 		msg := fmt.Sprintf("%s: ", t)
 		msg += fmt.Sprint(args...)
-		l.guiLogsCh <- msg
+		l.guiCh <- gui.IncomingData{Log: msg}
 	}
 }
 
 func (l *Logger) Shipf(t level, format string, args ...interface{}) {
-	if l.guiLogsCh != nil {
+	if l.guiCh != nil {
 		msg := fmt.Sprintf("%s: ", t)
 		msg += fmt.Sprintf(format, args...)
-		l.guiLogsCh <- msg
+		l.guiCh <- gui.IncomingData{Log: msg}
 	}
 }
 
