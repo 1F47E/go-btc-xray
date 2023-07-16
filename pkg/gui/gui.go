@@ -92,13 +92,13 @@ func (g *GUI) Start() {
 	go g.listner()
 
 	// PROGRESS
-	g0 := widgets.NewGauge()
-	g0.Title = "Progress"
-	g0.Percent = 20
-	g0.BarColor = tui.ColorBlue
-	g0.BorderStyle.Fg = tui.ColorWhite
-	g0.Label = fmt.Sprintf("%d/%d", 20, 100)
-	g0.LabelStyle = tui.NewStyle(tui.ColorWhite)
+	progress := widgets.NewGauge()
+	progress.Title = "Progress"
+	progress.Percent = 0
+	progress.BarColor = tui.ColorBlue
+	progress.BorderStyle.Fg = tui.ColorWhite
+	progress.Label = "Loading..."
+	progress.LabelStyle = tui.NewStyle(tui.ColorWhite)
 
 	// CONNECTIONS
 	chartConn := widgets.NewSparkline()
@@ -146,12 +146,12 @@ func (g *GUI) Start() {
 	chartNodesDead.Data = [][]float64{make([]float64, lenNodesChart)}
 	chartNodesDead.LineColors = []tui.Color{tui.ColorRed} // force the collor, bug
 
-	gs := make([]*widgets.Gauge, 3)
-	for i := range gs {
-		gs[i] = widgets.NewGauge()
-		gs[i].Percent = i * 10
-		gs[i].BarColor = tui.ColorRed
-	}
+	// gs := make([]*widgets.Gauge, 3)
+	// for i := range gs {
+	// 	gs[i] = widgets.NewGauge()
+	// 	gs[i].Percent = i * 10
+	// 	gs[i].BarColor = tui.ColorRed
+	// }
 
 	// LOGS
 	p := widgets.NewParagraph()
@@ -179,7 +179,7 @@ func (g *GUI) Start() {
 		),
 		// progress
 		tui.NewRow(0.1,
-			tui.NewCol(1, g0),
+			tui.NewCol(1, progress),
 		),
 	)
 	tui.Render(grid)
@@ -208,9 +208,6 @@ func (g *GUI) Start() {
 				tui.Render(grid)
 			}
 		case <-ticker.C:
-			for _, g := range gs {
-				g.Percent = (g.Percent + 3) % 100
-			}
 
 			// update logs
 			p.Text = g.buffLogs.GetString()
@@ -218,18 +215,33 @@ func (g *GUI) Start() {
 			// connections update
 			chartConnWrap.Sparklines[0].Data = g.buffConnections.GetFloats()
 
-			// nodes chart
-			// chartNodesTotal.Data[0] = g.dataNodesTotal.Data()
+			// calc progress
+			total := g.buffNodesTotal.GetLastNum()
+			queued := g.buffNodesQueued.GetLastNum()
+			good := g.buffNodesGood.GetLastNum()
+			dead := g.buffNodesDead.GetLastNum()
+			left := good + dead
+			if left > 0 {
+				prog := float64(left) / float64(total) * 100
+				progress.Percent = int(prog)
+				progress.Label = fmt.Sprintf("%.0f%%", prog)
+			} else if queued == 0 {
+				progress.Label = "Loading seeds..."
+			} else {
+				progress.Label = "Connecting..."
+			}
+
+			// update charts
 			chartNodesTotal.Data[0] = g.buffNodesTotal.GetFloats()
 			chartNodesQueue.Data[0] = g.buffNodesQueued.GetFloats()
 			chartNodesGood.Data[0] = g.buffNodesGood.GetFloats()
 			chartNodesDead.Data[0] = g.buffNodesDead.GetFloats()
 
 			//  update titles
-			updateTitle(chartNodesTotal, g.buffNodesTotal.GetLastNum(), "Total")
-			updateTitle(chartNodesQueue, g.buffNodesQueued.GetLastNum(), "Queue")
-			updateTitle(chartNodesGood, g.buffNodesGood.GetLastNum(), "Good")
-			updateTitle(chartNodesDead, g.buffNodesDead.GetLastNum(), "Dead")
+			updateTitle(chartNodesTotal, total, "Total")
+			updateTitle(chartNodesQueue, queued, "Queue")
+			updateTitle(chartNodesGood, good, "Good")
+			updateTitle(chartNodesDead, dead, "Dead")
 			updateTitleChart(chartConnWrap, g.buffConnections.GetLastNum(), "Conn.")
 
 			// update info
