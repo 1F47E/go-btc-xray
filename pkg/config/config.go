@@ -2,7 +2,9 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/btcsuite/btcd/wire"
@@ -22,6 +24,7 @@ type Config struct {
 	NodesPort        uint16
 	NodeTimeout      time.Duration
 	PingInterval     time.Duration
+	PingTimeout      time.Duration
 	ListenInterval   time.Duration
 	ConnectionsLimit int
 	LogsDir          string
@@ -51,6 +54,7 @@ func New() *Config {
 		Pver:           wire.ProtocolVersion, // 70016
 		NodeTimeout:    5 * time.Second,
 		PingInterval:   1 * time.Minute,
+		PingTimeout:    15 * time.Second,
 		ListenInterval: 1 * time.Second,
 		LogsDir:        "logs",
 		LogsFilename:   fmt.Sprintf("logs_%s.log", time.Now().Format("2006-01-02_15-04-05")),
@@ -60,6 +64,14 @@ func New() *Config {
 		cfg.ConnectionsLimit = 30
 	} else {
 		cfg.ConnectionsLimit = 50
+	}
+	// override connections limit
+	if os.Getenv("CONN") != "" {
+		conn, err := strconv.Atoi(os.Getenv("CONN"))
+		if err != nil {
+			log.Fatalf("error converting CONN env variable to int: %v", err)
+		}
+		cfg.ConnectionsLimit = conn
 	}
 	if os.Getenv("TESTNET") == "1" {
 		cfg.Network = NetworkTestnet
