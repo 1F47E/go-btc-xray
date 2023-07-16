@@ -19,7 +19,7 @@ import (
 var cfg = config.New()
 var mu sync.Mutex = sync.Mutex{}
 
-const lenLogs = 20
+const lenLogs = 25
 const lenConnChart = 14
 const lenNodesChart = 32
 

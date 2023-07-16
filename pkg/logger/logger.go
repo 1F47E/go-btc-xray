@@ -3,13 +3,18 @@ package logger
 // import logrus
 import (
 	"fmt"
+	"go-btc-downloader/pkg/config"
 	"go-btc-downloader/pkg/gui"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 )
 
 const logfile = "logs.log"
+
+var cfg = config.New()
 
 type level string
 
@@ -38,7 +43,13 @@ func initLogger() *logrus.Logger {
 
 	var format logrus.TextFormatter
 	if os.Getenv("GUI") == "1" {
-		file, err := os.OpenFile(logfile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		path := filepath.Join(cfg.LogsDir, cfg.LogsFilename)
+		// create folder in a path if not exists
+		err := os.MkdirAll(cfg.LogsDir, 0755)
+		if err != nil {
+			log.Fatalf("error creating logs folder: %v", err)
+		}
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err == nil {
 			log.SetOutput(file)
 			format.DisableColors = true
@@ -85,6 +96,9 @@ func (l *Logger) Debug(args ...interface{}) {
 }
 
 func (l *Logger) Debugf(format string, args ...interface{}) {
+	if !strings.HasSuffix(format, "\n") {
+		format += "\n"
+	}
 	l.Logger.Debugf(format, args...)
 	l.Shipf("DEBUG", format, args...)
 }
@@ -149,6 +163,8 @@ func (l *Logger) Shipf(t level, format string, args ...interface{}) {
 
 // ship to gui logs chan if it's not full
 func (l *Logger) ship(msg string) {
+	// strip newlines, logs for gui will be in a array and then joined with newlines
+	msg = strings.TrimSuffix(msg, "\n")
 	if l.guiCh != nil && len(l.guiCh) < cap(l.guiCh) {
 		l.guiCh <- gui.IncomingData{Log: msg}
 	}

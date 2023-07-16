@@ -52,12 +52,12 @@ func main() {
 		stop := make(chan os.Signal, 1)
 		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 		<-stop
-		log.Debugf("received exit signal, canceling ctx")
+		log.Debug("received exit signal, canceling ctx")
 		cancel()
 	}()
 	// blocking, waiting for all the goroutines to exit
 	<-ctx.Done()
-	log.Debugf("context canceled, exiting")
+	log.Debug("context canceled, exiting")
 	log.ResetToStdout()
 	// exit from GUI
 	if ui != nil {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -23,6 +24,8 @@ type Config struct {
 	PingInterval     time.Duration
 	ListenInterval   time.Duration
 	ConnectionsLimit int
+	LogsDir          string
+	LogsFilename     string
 
 	DnsAddress string
 	DnsTimeout time.Duration
@@ -49,10 +52,12 @@ func New() *Config {
 		NodeTimeout:    5 * time.Second,
 		PingInterval:   1 * time.Minute,
 		ListenInterval: 1 * time.Second,
+		LogsDir:        "logs",
+		LogsFilename:   fmt.Sprintf("logs_%s.log", time.Now().Format("2006-01-02_15-04-05")),
 		// Pver: 70013,
 	}
 	if os.Getenv("DEBUG") == "1" {
-		cfg.ConnectionsLimit = 10
+		cfg.ConnectionsLimit = 30
 	} else {
 		cfg.ConnectionsLimit = 50
 	}

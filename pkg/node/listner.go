@@ -20,8 +20,8 @@ func (n *Node) listen(ctx context.Context) {
 		if n.conn != nil {
 			n.conn.Close()
 		}
-		n.status = Disconnected
-		log.Warnf("%s closed\n", a)
+		n.status = disconnected
+		n.log.Warnf("%s closed\n", a)
 	}()
 	// exit listener if no connection
 	if n.conn == nil {
@@ -34,14 +34,14 @@ func (n *Node) listen(ctx context.Context) {
 			return
 		case <-ticker.C:
 			// do not connect if no connection, will panic
-			if n.conn == nil || n.status != Connected {
+			if n.conn == nil || n.status != connected {
 				return
 			}
 			cnt, msg, rawPayload, err := wire.ReadMessageN(n.conn, cfg.Pver, cfg.Btcnet)
 			// cnt, msg, rawPayload, err := wire.ReadMessageWithEncodingN(n.Conn, cfg.Pver, cfg.Btcnet, wire.BaseEncoding)
 			if err != nil {
 				if err == io.EOF {
-					log.Warnf("%s EOF, exit\n", a)
+					n.log.Warnf("%s EOF, exit\n", a)
 					return
 				}
 				// Since the protocol version is 70016 but we don't
@@ -51,47 +51,47 @@ func (n *Node) listen(ctx context.Context) {
 				// compact blocks negotiation occurs after the
 				// handshake.
 				if err == wire.ErrUnknownMessage {
-					log.Warnf("%s ERR: unknown message, ignoring\n", a)
+					n.log.Warnf("%s ERR: unknown message, ignoring\n", a)
 					continue
 				}
 
 				// log.Fatalf("Cant read buffer, error: %v\n", err)
-				log.Warnf("%s ERR: Cant read buffer, error: %v\n", a, err)
-				log.Warnf("%s ERR: bytes read: %v\n", a, cnt)
-				log.Warnf("%s ERR: msg: %v\n", a, msg)
-				log.Warnf("%s ERR: rawPayload: %v\n", a, rawPayload)
+				n.log.Warnf("%s ERR: Cant read buffer, error: %v\n", a, err)
+				n.log.Warnf("%s ERR: bytes read: %v\n", a, cnt)
+				n.log.Warnf("%s ERR: msg: %v\n", a, msg)
+				n.log.Warnf("%s ERR: rawPayload: %v\n", a, rawPayload)
 				continue
 			}
-			log.Debugf("%s Got message: %d bytes, cmd: %s rawPayload len: %d\n", a, cnt, msg.Command(), len(rawPayload))
+			n.log.Debugf("%s Got message: %d bytes, cmd: %s rawPayload len: %d\n", a, cnt, msg.Command(), len(rawPayload))
 			switch m := msg.(type) {
 			case *wire.MsgVersion:
-				log.Infof("%s MsgVersion received\n", a)
-				log.Debugf("%s version: %v\n", a, m.ProtocolVersion)
-				log.Debugf("%s msg: %+v\n", a, m)
+				n.log.Infof("%s MsgVersion received\n", a)
+				n.log.Debugf("%s version: %v\n", a, m.ProtocolVersion)
+				n.log.Debugf("%s msg: %+v\n", a, m)
 				n.version = m.ProtocolVersion
 
 			case *wire.MsgVerAck:
-				log.Infof("%s MsgVerAck received\n", a)
-				log.Debugf("%s msg: %+v\n", a, m)
+				n.log.Infof("%s MsgVerAck received\n", a)
+				n.log.Debugf("%s msg: %+v\n", a, m)
 
 			case *wire.MsgPing:
-				log.Infof("%s MsgPing received\n", a)
-				log.Debugf("%s nonce: %v\n", a, m.Nonce)
-				log.Debugf("%s msg: %+v\n", a, m)
+				n.log.Infof("%s MsgPing received\n", a)
+				n.log.Debugf("%s nonce: %v\n", a, m.Nonce)
+				n.log.Debugf("%s msg: %+v\n", a, m)
 
 			case *wire.MsgPong:
-				log.Infof("%s MsgPong received\n", a)
+				n.log.Infof("%s MsgPong received\n", a)
 				if m.Nonce == n.pingNonce {
-					log.Debugf("%s pong OK\n", a)
+					n.log.Debugf("%s pong OK\n", a)
 					n.pingCount++
 					n.pingNonce = 0
 				} else {
-					log.Warnf("%s pong nonce mismatch, expected %v, got %v\n", a, n.pingNonce, m.Nonce)
+					n.log.Warnf("%s pong nonce mismatch, expected %v, got %v\n", a, n.pingNonce, m.Nonce)
 				}
 
 			case *wire.MsgAddr:
-				log.Infof("%s MsgAddr received\n", a)
-				log.Debugf("%s got %d addresses\n", a, len(m.AddrList))
+				n.log.Infof("%s MsgAddr received\n", a)
+				n.log.Debugf("%s got %d addresses\n", a, len(m.AddrList))
 				batch := make([]string, len(m.AddrList))
 				for i, a := range m.AddrList {
 					batch[i] = fmt.Sprintf("[%s]:%d", a.IP.String(), a.Port)
@@ -100,8 +100,8 @@ func (n *Node) listen(ctx context.Context) {
 				n.Disconnect()
 
 			case *wire.MsgAddrV2:
-				log.Infof("%s MsgAddrV2 received\n", a)
-				log.Debugf("%s got %d addresses\n", a, len(m.AddrList))
+				n.log.Infof("%s MsgAddrV2 received\n", a)
+				n.log.Debugf("%s got %d addresses\n", a, len(m.AddrList))
 				batch := make([]string, len(m.AddrList))
 				for i, a := range m.AddrList {
 					batch[i] = a.Addr.String()
@@ -110,21 +110,21 @@ func (n *Node) listen(ctx context.Context) {
 				n.Disconnect()
 
 			case *wire.MsgInv:
-				log.Infof("%s MsgInv received\n", a)
-				log.Debugf("%s data: %d\n", a, len(m.InvList))
+				n.log.Infof("%s MsgInv received\n", a)
+				n.log.Debugf("%s data: %d\n", a, len(m.InvList))
 				// TODO: answer on inv
 
 			case *wire.MsgFeeFilter:
-				log.Infof("%s MsgFeeFilter received\n", a)
-				log.Debugf("%s fee: %v\n", a, m.MinFee)
+				n.log.Infof("%s MsgFeeFilter received\n", a)
+				n.log.Debugf("%s fee: %v\n", a, m.MinFee)
 
 			case *wire.MsgGetHeaders:
-				log.Infof("%s MsgGetHeaders received\n", a)
-				log.Debugf("%s headers: %d\n", a, len(m.BlockLocatorHashes))
+				n.log.Infof("%s MsgGetHeaders received\n", a)
+				n.log.Debugf("%s headers: %d\n", a, len(m.BlockLocatorHashes))
 
 			default:
-				log.Infof("%s (%T) message received (unhandled)\n", a, m)
-				log.Debugf("%s msg: %+v\n", a, m)
+				n.log.Infof("%s (%T) message received (unhandled)\n", a, m)
+				n.log.Debugf("%s msg: %+v\n", a, m)
 			}
 		}
 	}
