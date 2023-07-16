@@ -3,7 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
-	"go-btc-downloader/pkg/node"
+	"go-btc-downloader/pkg/client/node"
 	"os"
 )
 

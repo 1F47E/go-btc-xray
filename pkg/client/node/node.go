@@ -12,6 +12,16 @@ import (
 
 var cfg = config.New()
 
+// type Status int
+
+// const (
+// 	StatusNew Status = iota
+// 	StatusConnecting
+// 	StatusConnected
+// 	StatusDisconnected
+// 	StatusDead
+// )
+
 type status int
 
 const (
@@ -49,6 +59,10 @@ func (n *Node) Resolve() {
 		n.status = dead
 	}
 }
+
+// func (n *Node) Status() Status {
+// 	return n.status
+// }
 
 // returns true if connection was closed
 func (n *Node) Disconnect() bool {
@@ -94,7 +108,7 @@ func (n *Node) EndpointSafe() string {
 	return fmt.Sprintf("[%s]:%d", n.ip, cfg.NodesPort)
 }
 
-func (n *Node) Connect(ctx context.Context) {
+func (n *Node) Connect(ctx context.Context) error {
 	n.status = connecting
 	a := fmt.Sprintf("▶︎ %s", n.ip)
 	n.log.Debugf("%s connecting...\n", a)
@@ -105,8 +119,7 @@ func (n *Node) Connect(ctx context.Context) {
 	conn, err := net.DialTimeout("tcp", n.EndpointSafe(), cfg.NodeTimeout)
 	if err != nil {
 		n.status = dead
-		n.log.Debugf("%s failed to connect: %v\n", a, err)
-		return
+		return err
 	}
 	n.log.Debugf("%s connected\n", a)
 	n.conn = conn
@@ -122,8 +135,7 @@ func (n *Node) Connect(ctx context.Context) {
 	n.UpdateNonce()
 	err = cmd.SendVersion(n.conn, n.pingNonce)
 	if err != nil {
-		n.log.Errorf("[%s]: failed to write version: %v", a, err)
-		return
+		return fmt.Errorf("failed to write version: %v", err)
 	}
 	n.log.Debugf("%s OK\n", a)
 
@@ -131,8 +143,7 @@ func (n *Node) Connect(ctx context.Context) {
 	n.log.Debugf("%s sending sendaddrv2...\n", a)
 	err = cmd.SendAddrV2(n.conn)
 	if err != nil {
-		n.log.Errorf("%s failed to write sendaddrv2: %v\n", a, err)
-		return
+		return fmt.Errorf("failed to write sendaddrv2: %v", err)
 	}
 	n.log.Debugf("%s OK\n", a)
 
@@ -142,8 +153,7 @@ func (n *Node) Connect(ctx context.Context) {
 	n.log.Debugf("%s sending verack...\n", a)
 	err = cmd.SendVerAck(n.conn)
 	if err != nil {
-		n.log.Errorf("%s failed to write verack: %v\n", a, err)
-		return
+		return fmt.Errorf("failed to write verack: %v", err)
 	}
 	n.log.Debugf("%s OK\n", a)
 	n.isGood = true
@@ -155,8 +165,7 @@ func (n *Node) Connect(ctx context.Context) {
 	n.log.Debugf("%s sending getaddr...\n", a)
 	err = cmd.SendGetAddr(n.conn)
 	if err != nil {
-		n.log.Errorf("%s failed to write getaddr: %v\n", a, err)
-		return
+		return fmt.Errorf("failed to write getaddr: %v", err)
 	}
 	n.log.Debugf("%s OK\n", a)
 
@@ -169,25 +178,24 @@ func (n *Node) Connect(ctx context.Context) {
 		select {
 		case <-timeout.Done():
 			n.log.Warnf("%s ping timeout\n", a)
-			return
+			return nil
 		case <-ctx.Done():
 			n.log.Warnf("%s context done, disconnecting\n", a)
-			return
+			return nil
 		case <-ticker.C:
 			if n.conn == nil {
 				n.log.Debugf("%s disconnected\n", a)
-				return
+				return nil
 			}
 			if n.pingCount >= 1 {
 				n.log.Debugf("%s ping count reached\n", a)
-				return
+				return nil
 			}
 			n.log.Debugf("%s sending ping...\n", a)
 			n.UpdateNonce()
 			err = cmd.SendPing(n.conn, n.pingNonce)
 			if err != nil {
-				n.log.Debugf("%s failed to write ping: %v\n", a, err)
-				return
+				return fmt.Errorf("failed to write ping: %v", err)
 			}
 			n.log.Debugf("%s OK\n", a)
 		}
