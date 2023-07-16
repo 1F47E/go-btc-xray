@@ -55,7 +55,7 @@ func (n *Node) Disconnect() bool {
 	if n.conn != nil {
 		n.conn.Close()
 		n.conn = nil
-		n.status = disconnected // TODO: remove?
+		n.status = disconnected
 		return true
 	}
 	return false
@@ -100,7 +100,6 @@ func (n *Node) Connect(ctx context.Context) {
 	n.log.Debugf("%s connecting...\n", a)
 	defer func() {
 		n.conn = nil
-		n.status = disconnected
 		n.log.Debugf("%s closed\n", a)
 	}()
 	conn, err := net.DialTimeout("tcp", n.EndpointSafe(), cfg.NodeTimeout)
@@ -162,10 +161,17 @@ func (n *Node) Connect(ctx context.Context) {
 	n.log.Debugf("%s OK\n", a)
 
 	// send pings
+	timeout, cancel := context.WithTimeout(ctx, cfg.PingTimeout)
+	defer cancel()
 	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
 	for {
 		select {
+		case <-timeout.Done():
+			n.log.Warnf("%s ping timeout\n", a)
+			return
 		case <-ctx.Done():
+			n.log.Warnf("%s context done, disconnecting\n", a)
 			return
 		case <-ticker.C:
 			if n.conn == nil {
