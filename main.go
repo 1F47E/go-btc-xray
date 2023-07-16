@@ -6,6 +6,8 @@ import (
 	"go-btc-downloader/pkg/dns"
 	"go-btc-downloader/pkg/gui"
 	"go-btc-downloader/pkg/logger"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -29,7 +31,6 @@ func main() {
 	// CLIENT
 	// start client and listen for new nodes to connect
 	c := client.NewClient(ctx, log, guiCh)
-	go c.Start()
 
 	// DNS SCAN
 	// if not debugging gui
@@ -42,12 +43,19 @@ func main() {
 				log.Fatalf("no seed nodes found")
 			}
 			c.AddNodes(addrs)
+			// start the client after seed nodes are added
+			go c.Start()
+		}()
+	}
+
+	// PROFILING
+	if os.Getenv("PPROF") == "1" {
+		go func() {
+			_ = http.ListenAndServe("localhost:6060", nil)
 		}()
 	}
 
 	// GRACEFUL SHUTDOWN
-
-	// block and wait for the OS signal to exit
 	go func() {
 		stop := make(chan os.Signal, 1)
 		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
