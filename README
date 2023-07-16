@@ -30,6 +30,6 @@ TODO:
 - [x] get addr from peer
 - [x] update and store peers
 - [x] CLI GUI
-- [ ] gracefull shutdown
+- [x] gracefull shutdown
 - [ ] DB
 - [ ] API server
