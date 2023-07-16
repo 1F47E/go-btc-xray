@@ -27,12 +27,17 @@ type Logger struct {
 }
 
 func New(guiCh chan gui.IncomingData) *Logger {
-	log := logrus.New()
-	// format := &logrus.TextFormatter{}
-	var format logrus.TextFormatter
 
-	// set logs output to file if GUI is enabled
-	if os.Getenv("GUI") != "0" {
+	log := initLogger()
+	return &Logger{log, guiCh}
+}
+
+func initLogger() *logrus.Logger {
+
+	log := logrus.New()
+
+	var format logrus.TextFormatter
+	if os.Getenv("GUI") == "1" {
 		file, err := os.OpenFile(logfile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err == nil {
 			log.SetOutput(file)
@@ -41,9 +46,13 @@ func New(guiCh chan gui.IncomingData) *Logger {
 		} else {
 			log.Fatal(err)
 		}
+		log.SetFormatter(&format)
 	} else {
+		var format logrus.TextFormatter
 		format.ForceColors = true
 		format.DisableTimestamp = true
+		log.Out = os.Stdout
+		log.SetFormatter(&format)
 	}
 
 	if os.Getenv("DEBUG") == "1" {
@@ -52,9 +61,12 @@ func New(guiCh chan gui.IncomingData) *Logger {
 		log.SetLevel(logrus.InfoLevel)
 	}
 
-	log.SetFormatter(&format)
+	return log
+}
 
-	return &Logger{log, guiCh}
+func (l *Logger) ResetToStdout() {
+	os.Setenv("GUI", "0")
+	l.Logger = initLogger()
 }
 
 func (l *Logger) Close() error {

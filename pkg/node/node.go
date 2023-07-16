@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 	"go-btc-downloader/pkg/cmd"
 	"go-btc-downloader/pkg/config"
@@ -85,7 +86,7 @@ func (n *Node) EndpointSafe() string {
 	return fmt.Sprintf("[%s]:%d", n.ip, cfg.NodesPort)
 }
 
-func (n *Node) Connect() {
+func (n *Node) Connect(ctx context.Context) {
 	a := fmt.Sprintf("▶︎ %s", n.ip)
 	log.Debugf("%s connecting...\n", a)
 	defer func() {
@@ -93,8 +94,7 @@ func (n *Node) Connect() {
 		n.status = Disconnected
 		log.Debugf("%s closed\n", a)
 	}()
-	timeout := time.Duration(5 * time.Second)
-	conn, err := net.DialTimeout("tcp", n.EndpointSafe(), timeout)
+	conn, err := net.DialTimeout("tcp", n.EndpointSafe(), cfg.NodeTimeout)
 	if err != nil {
 		n.status = Dead
 		log.Debugf("%s failed to connect: %v\n", a, err)
@@ -104,8 +104,8 @@ func (n *Node) Connect() {
 	n.conn = conn
 	n.status = Connected
 	// handle answers
-	// exit on closed connection
-	go n.listen()
+	// exit on closed connection or context cancel
+	go n.listen(ctx)
 
 	// ===== NEGOTIATION
 	// TODO: make it in a separate negotiation function
@@ -153,24 +153,24 @@ func (n *Node) Connect() {
 	log.Debugf("%s OK\n", a)
 
 	// send pings
-	time.Sleep(1 * time.Second)
-	for {
-		if n.conn == nil {
-			log.Debugf("%s disconnected\n", a)
-			return
-		}
-		if n.pingCount >= 1 {
-			log.Debugf("%s ping count reached\n", a)
-			return
-		}
-		log.Debugf("%s sending ping...\n", a)
-		n.UpdateNonce()
-		err = cmd.SendPing(n.conn, n.pingNonce)
-		if err != nil {
-			log.Debugf("%s failed to write ping: %v\n", a, err)
-			return
-		}
-		log.Debugf("%s OK\n", a)
-		time.Sleep(1 * time.Minute)
-	}
+	// time.Sleep(1 * time.Second)
+	// for {
+	// 	if n.conn == nil {
+	// 		log.Debugf("%s disconnected\n", a)
+	// 		return
+	// 	}
+	// 	if n.pingCount >= 1 {
+	// 		log.Debugf("%s ping count reached\n", a)
+	// 		return
+	// 	}
+	// 	log.Debugf("%s sending ping...\n", a)
+	// 	n.UpdateNonce()
+	// 	err = cmd.SendPing(n.conn, n.pingNonce)
+	// 	if err != nil {
+	// 		log.Debugf("%s failed to write ping: %v\n", a, err)
+	// 		return
+	// 	}
+	// 	log.Debugf("%s OK\n", a)
+	// 	time.Sleep(1 * time.Minute)
+	// }
 }

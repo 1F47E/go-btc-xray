@@ -19,6 +19,9 @@ type Config struct {
 	NodesDB          string
 	GoodNodesDB      string
 	NodesPort        uint16
+	NodeTimeout      time.Duration
+	PingInterval     time.Duration
+	ListenInterval   time.Duration
 	ConnectionsLimit int
 
 	DnsAddress string
@@ -35,8 +38,11 @@ type Config struct {
 func New() *Config {
 	cfg := &Config{
 		// var dnsAddress = "1.1.1.1:53" // cloudflare dns, 2x slower
-		DnsAddress: "8.8.8.8:53",
-		Pver:       wire.ProtocolVersion, // 70016
+		DnsAddress:     "8.8.8.8:53",
+		Pver:           wire.ProtocolVersion, // 70016
+		NodeTimeout:    5 * time.Second,
+		PingInterval:   1 * time.Minute,
+		ListenInterval: 1 * time.Second,
 		// Pver: 70013,
 	}
 	if os.Getenv("DEBUG") == "1" {

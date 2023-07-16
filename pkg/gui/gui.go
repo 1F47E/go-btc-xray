@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"context"
 	"fmt"
 	"go-btc-downloader/pkg/config"
 	buff "go-btc-downloader/pkg/gui/buffer"
@@ -32,6 +33,7 @@ type IncomingData struct {
 }
 
 type GUI struct {
+	ctx             context.Context
 	ch              chan IncomingData
 	buffConnections *buff.GuiBuffer
 	buffNodesTotal  *buff.GuiBuffer
@@ -41,8 +43,9 @@ type GUI struct {
 	buffLogs        *buff.GuiBuffer
 }
 
-func New(ch chan IncomingData) *GUI {
+func New(ctx context.Context, ch chan IncomingData) *GUI {
 	g := GUI{
+		ctx:             ctx,
 		ch:              ch,
 		buffConnections: buff.New(lenConnChart),
 		buffNodesTotal:  buff.New(lenNodesChart),
@@ -55,27 +58,35 @@ func New(ch chan IncomingData) *GUI {
 }
 
 func (g *GUI) listner() {
-	for d := range g.ch {
-		mu.Lock()
-		g.buffConnections.AddNum(d.Connections)
-		g.buffNodesTotal.AddNum(d.NodesTotal)
-		g.buffNodesQueued.AddNum(d.NodesQueued)
-		g.buffNodesGood.AddNum(d.NodesGood)
-		g.buffNodesDead.AddNum(d.NodesDead)
-		g.buffLogs.AddString(d.Log)
-		mu.Unlock()
+	for {
+		select {
+		case <-g.ctx.Done():
+			return
+		case d := <-g.ch:
+			mu.Lock()
+			g.buffConnections.AddNum(d.Connections)
+			g.buffNodesTotal.AddNum(d.NodesTotal)
+			g.buffNodesQueued.AddNum(d.NodesQueued)
+			g.buffNodesGood.AddNum(d.NodesGood)
+			g.buffNodesDead.AddNum(d.NodesDead)
+			g.buffLogs.AddString(d.Log)
+			mu.Unlock()
+		}
 	}
+}
+
+func (g *GUI) Stop() {
+	tui.Close()
 }
 
 func (g *GUI) Start() {
 	if err := tui.Init(); err != nil {
 		log.Fatalf("failed to initialize termui: %v", err)
 	}
-	defer tui.Close()
-
-	if os.Getenv("GUI_SIM") == "1" {
-		go g.sendDebugData()
-	}
+	defer func() {
+		tui.Close()
+		log.Println("ready to exit")
+	}()
 
 	// start incoming data listner
 	go g.listner()
@@ -173,12 +184,19 @@ func (g *GUI) Start() {
 	)
 	tui.Render(grid)
 
+	// send debug data
+	if os.Getenv("GUI_DEBUG") == "1" {
+		go g.sendDebugData()
+	}
+
 	// UPDATER
 	tickerCount := 1
 	uiEvents := tui.PollEvents()
 	ticker := time.NewTicker(200 * time.Millisecond)
 	for {
 		select {
+		case <-g.ctx.Done():
+			return
 		case e := <-uiEvents:
 			switch e.ID {
 			case "q", "<C-c>":
@@ -266,7 +284,6 @@ func (g *GUI) getInfo() [][]string {
 }
 
 // update titles
-// TODO: make one
 func updateTitleChart(chart *widgets.SparklineGroup, data int, title string) {
 	if data > 0 {
 		title += fmt.Sprintf(": %d", data)
@@ -282,66 +299,30 @@ func updateTitle(chart *widgets.Plot, data int, title string) {
 }
 
 func (g *GUI) sendDebugData() {
-	// send fake logs to debug gui
-	go func() {
-		cnt := 0
-		for {
-			time.Sleep(1 * time.Second)
+	// send fake data to gui for debug
+	cnt := 0
+	ticker := time.NewTicker(1 * time.Second)
+	for {
+		select {
+		case <-g.ctx.Done():
+			return
+		case <-ticker.C:
 			for i := 0; i < 5; i++ {
 				cnt = cnt + i
-				// guiLogsCh <- fmt.Sprintf("test log %d\n", cnt)
+				g.ch <- IncomingData{Log: fmt.Sprintf("test log %d\n", cnt)}
 			}
-		}
-	}()
-
-	// send fake conn data to debug gui
-	go func() {
-		for {
-			time.Sleep(100 * time.Millisecond)
-			rInt := rand.Intn(cfg.ConnectionsLimit)
+			rConn := rand.Intn(cfg.ConnectionsLimit)
+			rTotal := rand.Intn(cfg.ConnectionsLimit)
+			rQueued := rand.Intn(cfg.ConnectionsLimit)
+			rGood := rand.Intn(cfg.ConnectionsLimit)
+			rDead := rand.Intn(cfg.ConnectionsLimit)
 			g.ch <- IncomingData{
-				Connections: rInt,
+				Connections: rConn,
+				NodesTotal:  rTotal,
+				NodesQueued: rQueued,
+				NodesGood:   rGood,
+				NodesDead:   rDead,
 			}
 		}
-	}()
-	// send fake nodes total to debug
-	go func() {
-		for {
-			time.Sleep(200 * time.Millisecond)
-			rInt := rand.Intn(100)
-			g.ch <- IncomingData{
-				NodesTotal: 100 + rInt,
-			}
-		}
-	}()
-	// // send queue
-	go func() {
-		for {
-			time.Sleep(200 * time.Millisecond)
-			rInt := rand.Intn(100)
-			g.ch <- IncomingData{
-				NodesQueued: 20 + rInt,
-			}
-		}
-	}()
-	// // send good nodes to debug
-	go func() {
-		for {
-			time.Sleep(300 * time.Millisecond)
-			rInt := rand.Intn(100)
-			g.ch <- IncomingData{
-				NodesGood: 100 + rInt,
-			}
-		}
-	}()
-	// // send dead nodes to debug
-	go func() {
-		for {
-			time.Sleep(400 * time.Millisecond)
-			rInt := rand.Intn(100)
-			g.ch <- IncomingData{
-				NodesDead: 100 + rInt,
-			}
-		}
-	}()
+	}
 }

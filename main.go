@@ -1,32 +1,40 @@
 package main
 
 import (
+	"context"
 	"go-btc-downloader/pkg/client"
 	"go-btc-downloader/pkg/dns"
 	"go-btc-downloader/pkg/gui"
 	"go-btc-downloader/pkg/logger"
 	"os"
-	"sync"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
-	// cfg := config.New()
-	guiCh := make(chan gui.IncomingData, 100) // do not block sending gui updated
+	// do not block, sending gui updated
+	guiCh := make(chan gui.IncomingData, 10)
 	log := logger.New(guiCh)
 
-	if os.Getenv("GUI") != "0" {
-		g := gui.New(guiCh)
-		go g.Start()
-	}
-	// TODO: make graceful shutdown
-	// ctx, cancel := context.WithCancel(context.Background())
+	// context for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
 
+	// GUI
+	var ui *gui.GUI
+	if os.Getenv("GUI") != "0" {
+		ui = gui.New(ctx, guiCh)
+		go ui.Start()
+	}
+
+	// CLIENT
 	// start client and listen for new nodes to connect
-	c := client.NewClient(log, guiCh)
+	c := client.NewClient(ctx, log, guiCh)
 	go c.Start()
 	log.Debugf("client started")
 
-	if os.Getenv("GUI_SIM") != "1" {
+	// DNS SCAN
+	// if not debugging gui
+	if os.Getenv("GUI_DEBUG") != "1" {
 		// scan seed nodes, add them to the client
 		go func() {
 			d := dns.New(log)
@@ -42,22 +50,23 @@ func main() {
 		}()
 	}
 
-	wg := sync.WaitGroup{}
+	// GRACEFUL SHUTDOWN
 
-	// connect to random node (debug)
-	// rand.Seed(time.Now().UnixNano())
-	// randInt := rand.Intn(len(nodes))
-	// node := nodes[randInt]
-	// wg.Add(1)
-	// go node.Connect()
-
-	// go c.NewNodesListner()
-	// always block for now
-	// exit := make(chan os.Signal, 1)
-	// signal.Notify(exit, os.Interrupt)
-	// <-exit
-	// cancel()
-	// log.Warn("exiting")
-	wg.Add(1)
-	wg.Wait()
+	// block and wait for the OS signal to exit
+	go func() {
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+		<-stop
+		log.Debugf("received exit signal, canceling ctx")
+		cancel()
+	}()
+	// blocking, waiting for all the goroutines to exit
+	<-ctx.Done()
+	log.ResetToStdout()
+	// exit from GUI
+	if ui != nil {
+		go ui.Stop()
+	}
+	// Closing all the connections
+	c.Stop()
 }
