@@ -12,8 +12,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const logfile = "logs.log"
-
 var cfg = config.New()
 
 type level string

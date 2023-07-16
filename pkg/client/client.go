@@ -21,14 +21,18 @@ var newAddrCh = make(chan []string, 100)
 
 type Client struct {
 	ctx   context.Context
+	exit  context.CancelFunc
 	log   *logger.Logger
 	nodes map[string]*node.Node
 	guiCh chan gui.IncomingData
 }
 
 func NewClient(ctx context.Context, log *logger.Logger, guiCh chan gui.IncomingData) *Client {
+	// client context to stop the client but not the app
+	cliCtx, cancel := context.WithCancel(ctx)
 	c := Client{
-		ctx:   ctx,
+		ctx:   cliCtx,
+		exit:  cancel,
 		log:   log,
 		nodes: make(map[string]*node.Node),
 		guiCh: guiCh,
@@ -65,6 +69,42 @@ func (c *Client) NodesQueue() []*node.Node {
 	}
 	mu.Unlock()
 	return nodes
+}
+
+func (c *Client) NodesGood() []*node.Node {
+	nodes := make([]*node.Node, 0)
+	mu.Lock()
+	for _, n := range c.nodes {
+		if n.IsGood() {
+			nodes = append(nodes, n)
+		}
+	}
+	mu.Unlock()
+	return nodes
+}
+
+func (c *Client) NodesGoodCnt() int {
+	mu.Lock()
+	cnt := 0
+	for _, n := range c.nodes {
+		if n.IsGood() {
+			cnt++
+		}
+	}
+	mu.Unlock()
+	return cnt
+}
+
+func (c *Client) NodesDeadCnt() int {
+	mu.Lock()
+	cnt := 0
+	for _, n := range c.nodes {
+		if n.IsDead() {
+			cnt++
+		}
+	}
+	mu.Unlock()
+	return cnt
 }
 
 func (c *Client) GetFromQueue(num int) []*node.Node {
@@ -158,6 +198,14 @@ func (c *Client) wNodesConnector() {
 			c.log.Infof("[CLIENT]: CONN: %d/%d nodes connected", connectedCnt, limit)
 			// get nodes to connect to
 			pool := c.GetFromQueue(left)
+
+			// exit client logic
+			// idea is to stop the client and close all the connections but keep the gui running
+			// if len(c.nodes) > 50 { // BUG: debug, force exit
+			if len(pool) == 0 && connectedCnt == 0 {
+				c.log.Warn("[CLIENT]: CONN: no nodes to connect, exit")
+				c.exit()
+			}
 			if len(pool) == 0 {
 				c.log.Debugf("[CLIENT]: CONN: no nodes to connect")
 				continue
@@ -166,18 +214,6 @@ func (c *Client) wNodesConnector() {
 			for _, n := range pool {
 				go n.Connect(c.ctx)
 			}
-			if len(pool) == 0 && connectedCnt == 0 {
-				c.log.Warn("[CLIENT]: CONN: no nodes to connect, exit?")
-			}
-			// TODO: exit when there is no more nodes to connect to
-			// exit if done
-			// if len(waitlist) == 0 {
-			// 	c.log.Warn("[CLIENT]: CONN: no nodes to connect, exit")
-			// 	for _, node := range c.nodes {
-			// 		node.Disconnect()
-			// 	}
-			// 	os.Exit(0)
-			// }
 		}
 	}
 }
@@ -194,40 +230,20 @@ func (c *Client) wNodesUpdater() {
 			return
 		case <-ticker.C:
 
-			// filter good nodes
-			// TODO: refactor this
-			good := make([]*node.Node, 0)
-			var dead, queued int
-			mu.Lock()
-			for _, node := range c.nodes {
-				if node.IsNew() {
-					queued++
-				}
-				if node.IsGood() {
-					good = append(good, node)
-				}
-				if node.IsDead() {
-					dead++
-				}
-				// if node.IsConnected() {
-				// 	connected++
-				// }
-				// if node.HasConnection() {
-				// 	connections++
-				// }
-			}
-			mu.Unlock()
+			queue := c.NodesQueue()
+			good := c.NodesGood()
+			deadCnt := c.NodesDeadCnt()
+			cntBusy := c.NodesBusyCnt() // busy nodes - connecting and connected status
 
-			cntBusy := c.NodesBusyCnt() // count busy nodes - connecting and connected status
-			// updat edata to gui
+			// send new data to gui
 			c.guiCh <- gui.IncomingData{
 				Connections: cntBusy,
 				NodesTotal:  len(c.nodes),
-				NodesQueued: queued,
+				NodesQueued: len(queue),
 				NodesGood:   len(good),
-				NodesDead:   dead,
+				NodesDead:   deadCnt,
 			}
-			c.log.Debugf("[CLIENT]: STAT: total:%d, connected:%d/%d, dead:%d, good:%d\n", len(c.nodes), cntBusy, cfg.ConnectionsLimit, dead, len(good))
+			c.log.Debugf("[CLIENT]: STAT: total:%d, connected:%d/%d, dead:%d, good:%d\n", len(c.nodes), cntBusy, cfg.ConnectionsLimit, deadCnt, len(good))
 			// report G count and memory used
 			var m runtime.MemStats
 			runtime.ReadMemStats(&m)
@@ -237,7 +253,7 @@ func (c *Client) wNodesUpdater() {
 			if len(good) > 0 {
 				err := storage.Save(cfg.GoodNodesDB, good)
 				if err != nil {
-					c.log.Debugf("[CLIENT]: STAT: failed to save nodes: %v\n", err)
+					c.log.Errorf("[CLIENT]: STAT: failed to save nodes: %v\n", err)
 					continue
 				}
 
