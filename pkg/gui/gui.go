@@ -190,7 +190,6 @@ func (g *GUI) Start() {
 	}
 
 	// UPDATER
-	tickerCount := 1
 	uiEvents := tui.PollEvents()
 	ticker := time.NewTicker(200 * time.Millisecond)
 	for {
@@ -263,7 +262,6 @@ func (g *GUI) Start() {
 				p.Text = msg
 			}
 			tui.Render(grid)
-			tickerCount++
 		}
 	}
 }
