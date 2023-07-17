@@ -3,7 +3,6 @@ package client
 import (
 	"go-btc-downloader/pkg/gui"
 	"go-btc-downloader/pkg/storage"
-	"path/filepath"
 	"runtime"
 	"sync/atomic"
 	"time"
@@ -60,6 +59,35 @@ func (c *Client) wNodeResultsHandler() {
 	}
 }
 
+// save good nodes to a file
+func (c *Client) wNodeSaver() {
+	c.log.Debug("[CLIENT]: SAVER worker started")
+	ticker := time.NewTicker(time.Second * 1)
+	cnt := 0
+	defer func() {
+		c.log.Debug("[CLIENT]: SAVER worker exited")
+		ticker.Stop()
+	}()
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-ticker.C:
+			if len(c.nodesGood) == cnt {
+				continue
+			}
+			// save good nodes to a file
+			err := storage.Save(c.nodesGood)
+			if err != nil {
+				c.log.Errorf("[CLIENT]: STAT: failed to save nodes: %v\n", err)
+				continue
+			}
+			c.log.Infof("[CLIENT]: saved %d nodes", len(c.nodesGood))
+			cnt = len(c.nodesGood)
+		}
+	}
+}
+
 // Connect to the nodes with a limit of connection
 // Number of workers = connections limit
 func (c *Client) wNodesConnector(n int) {
@@ -106,22 +134,12 @@ func (c *Client) wGuiUpdater() {
 				NodesDead:   deadCnt,
 			}
 			c.log.Debugf("[CLIENT]: STAT: total:%d, connected:%d/%d, good:%d, dead:%d", len(c.nodes), connCnt, cfg.ConnectionsLimit, len(c.nodesGood), c.nodesDeadCnt)
+
 			// report G count and memory used
 			var m runtime.MemStats
 			runtime.ReadMemStats(&m)
 			c.log.Debugf("[CLIENT]: STAT: G:%d, MEM:%dKb\n", runtime.NumGoroutine(), m.Alloc/1024)
 
-			// save good to json file
-			path := filepath.Join(cfg.DataDir, cfg.NodesFilename)
-			if len(c.nodesGood) > 0 {
-				err := storage.Save(path, c.nodesGood)
-				if err != nil {
-					c.log.Errorf("[CLIENT]: STAT: failed to save nodes: %v\n", err)
-					continue
-				}
-
-				c.log.Debugf("[CLIENT] STAT: saved %d node to %v\n", len(c.nodesGood), path)
-			}
 		}
 	}
 }

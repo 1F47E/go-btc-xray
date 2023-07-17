@@ -87,8 +87,11 @@ func (c *Client) Start() {
 	// collect and send data to the gui via channel
 	go c.wGuiUpdater()
 
-	// save good nodes that comes from the connector workers
+	// proccess good nodes that comes from the connector workers
 	go c.wNodeResultsHandler()
+
+	// save good nodes to a file periodically
+	go c.wNodeSaver()
 
 	// read channel with new nodes
 	go c.wNewAddrListner()

@@ -102,7 +102,7 @@ func (n *Node) Connect(ctx context.Context, resCh chan *Node) error {
 	conn, err := net.DialTimeout("tcp", n.EndpointSafe(), cfg.NodeTimeout)
 	if err != nil {
 		n.status = dead
-		return fmt.Errorf("failed to connect: %w", err)
+		return fmt.Errorf("%s failed to connect: %w", a, err)
 	}
 	n.log.Debugf("%s connected\n", a)
 	n.conn = conn
@@ -117,7 +117,7 @@ func (n *Node) Connect(ctx context.Context, resCh chan *Node) error {
 	n.log.Debugf("%s sending version...\n", a)
 	err = cmd.SendVersion(n.conn, n.pingNonce)
 	if err != nil {
-		return fmt.Errorf("failed to write version: %v", err)
+		return fmt.Errorf("%s failed to write version: %v", a, err)
 	}
 	n.log.Debugf("%s OK\n", a)
 
@@ -125,7 +125,7 @@ func (n *Node) Connect(ctx context.Context, resCh chan *Node) error {
 	n.log.Debugf("%s sending sendaddrv2...\n", a)
 	err = cmd.SendAddrV2(n.conn)
 	if err != nil {
-		return fmt.Errorf("failed to write sendaddrv2: %v", err)
+		return fmt.Errorf("%s failed to write sendaddrv2: %v", a, err)
 	}
 	n.log.Debugf("%s OK\n", a)
 
@@ -135,7 +135,7 @@ func (n *Node) Connect(ctx context.Context, resCh chan *Node) error {
 	n.log.Debugf("%s sending verack...\n", a)
 	err = cmd.SendVerAck(n.conn)
 	if err != nil {
-		return fmt.Errorf("failed to write verack: %v", err)
+		return fmt.Errorf("%s failed to write verack: %v", a, err)
 	}
 	n.log.Debugf("%s OK\n", a)
 
@@ -150,7 +150,7 @@ func (n *Node) Connect(ctx context.Context, resCh chan *Node) error {
 	n.log.Debugf("%s sending getaddr...\n", a)
 	err = cmd.SendGetAddr(n.conn)
 	if err != nil {
-		n.log.Errorf("failed to write getaddr: %v", err)
+		n.log.Errorf("%s failed to write getaddr: %v", a, err)
 		return nil
 	}
 	n.log.Debugf("%s OK\n", a)
@@ -188,7 +188,7 @@ func (n *Node) Connect(ctx context.Context, resCh chan *Node) error {
 			n.log.Debugf("%s sending ping...\n", a)
 			err = cmd.SendPing(n.conn, n.pingNonce)
 			if err != nil {
-				n.log.Errorf("failed to write ping: %v", err)
+				n.log.Errorf("%s failed to write ping: %v", a, err)
 				return nil
 			}
 			pingCount++

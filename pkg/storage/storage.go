@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-btc-downloader/pkg/client/node"
+	"go-btc-downloader/pkg/config"
 	"os"
+	"path/filepath"
 )
+
+var cfg = config.New()
 
 func CreateDir(dir string) error {
 	err := os.MkdirAll(dir, 0755)
@@ -29,7 +33,8 @@ func Load(filename string) ([]string, error) {
 	return ret, nil
 }
 
-func Save(filename string, nodes []*node.Node) error {
+func Save(nodes []*node.Node) error {
+	path := filepath.Join(cfg.DataDir, cfg.NodesFilename)
 	// save nodes as json
 	fData := make([]string, len(nodes))
 	for i, n := range nodes {
@@ -39,7 +44,7 @@ func Save(filename string, nodes []*node.Node) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal nodes: %v", err)
 	}
-	err = os.WriteFile(filename, fDataJson, 0644)
+	err = os.WriteFile(path, fDataJson, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write nodes: %v", err)
 	}
