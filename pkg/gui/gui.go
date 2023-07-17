@@ -103,7 +103,7 @@ func (g *GUI) Start() {
 	// CONNECTIONS
 	chartConn := widgets.NewSparkline()
 	// max connections
-	chartConn.MaxVal = float64(cfg.ConnectionsLimit) * 1.2 // height hack
+	chartConn.MaxVal = float64(cfg.ConnectionsLimit)
 	chartConn.Data = []float64{0}
 	chartConn.LineColor = tui.ColorMagenta
 	chartConn.TitleStyle.Fg = tui.ColorWhite

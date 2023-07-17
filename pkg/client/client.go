@@ -65,8 +65,7 @@ func NewClient(ctx context.Context, log *logger.Logger, guiCh chan gui.IncomingD
 		nodesGood: make([]*node.Node, 0),
 
 		// feeder will put new nodes to the queue
-		queueCh:     make(chan *node.Node, cfg.ConnectionsLimit),
-		activeConns: 0,
+		queueCh: make(chan *node.Node, cfg.ConnectionsLimit),
 
 		// results from the successfull node connection and handshake
 		nodeResCh: make(chan *node.Node),
