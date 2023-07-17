@@ -26,14 +26,14 @@ func (c *Client) wNewAddrListner() {
 
 // feed the queue with new nodes
 func (c *Client) wNodesFeeder() {
-	ticker := time.NewTicker(time.Second * 1)
-	defer ticker.Stop()
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
-		case <-ticker.C:
+		default:
 			if len(c.nodesNew) == 0 {
+				// do not overload the cpu by spinning to fast
+				time.Sleep(time.Millisecond * 100)
 				continue
 			}
 			n := c.nodesNew[0]

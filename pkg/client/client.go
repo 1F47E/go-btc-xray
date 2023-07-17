@@ -13,8 +13,10 @@ import (
 	"go-btc-downloader/pkg/config"
 	"go-btc-downloader/pkg/gui"
 	"go-btc-downloader/pkg/logger"
+	"math/rand"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // var murw = sync.RWMutex{}
@@ -126,6 +128,11 @@ func (c *Client) AddNodes(ips []string) {
 		c.nodesNew = append(c.nodesNew, n)
 		cnt++
 	}
+	// shuffle new nodes
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rnd.Shuffle(len(c.nodesNew), func(i, j int) {
+		c.nodesNew[i], c.nodesNew[j] = c.nodesNew[j], c.nodesNew[i]
+	})
 	c.mu.Unlock()
 	c.log.Debugf("[CLIENT]: got %d nodes from %d batch\n", cnt, len(ips))
 }
