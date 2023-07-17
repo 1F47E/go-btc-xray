@@ -31,5 +31,7 @@ TODO:
 - [x] update and store peers
 - [x] CLI GUI
 - [x] gracefull shutdown
+- [ ] add a timer
+- [ ] add msg window in gui
 - [ ] DB
 - [ ] API server

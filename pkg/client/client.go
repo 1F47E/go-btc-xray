@@ -1,3 +1,10 @@
+// Client managing and connecting to a list of Bitcoin nodes.
+// It maintains a queue of nodes to be connected to and uses a worker pool to establish connections.
+// Each worker runs in a separate goroutine and can connect to one node at a time.
+// When a connection is established (or fails), the result is sent to a results handler.
+// New nodes can be added to the client at any time from another nodes.
+// They added to the nodes map for quick check for duplicates
+// New nodes also added to the new nodes slices and then feeded to the queue to connect.
 package client
 
 import (
@@ -9,27 +16,25 @@ import (
 	"sync"
 )
 
-var mu = sync.Mutex{}
-var murw = sync.RWMutex{}
+// var murw = sync.RWMutex{}
 
 var cfg = config.New()
 
-// batch of new addresses. not block the sented (listner) goroutine
-var newAddrCh = make(chan []string, 100)
-
 type Client struct {
+	mu   sync.Mutex
 	ctx  context.Context
 	exit context.CancelFunc
 	log  *logger.Logger
 
 	nodes        map[string]*node.Node
+	nodesNew     []*node.Node
 	nodesGood    []*node.Node
 	nodesDeadCnt int
-	// send data to the gui
-	guiCh chan gui.IncomingData
-	// get data from the connected node
-	// nodeErrCh chan error
+
+	queueCh   chan *node.Node
+	guiCh     chan gui.IncomingData
 	nodeResCh chan *node.Node
+	newAddrCh chan []string
 }
 
 func NewClient(ctx context.Context, log *logger.Logger, guiCh chan gui.IncomingData) *Client {
@@ -37,26 +42,61 @@ func NewClient(ctx context.Context, log *logger.Logger, guiCh chan gui.IncomingD
 	// TODO: exit if no gui
 	cliCtx, cancel := context.WithCancel(ctx)
 	c := Client{
-		ctx:       cliCtx,
-		exit:      cancel,
-		log:       log,
-		nodes:     make(map[string]*node.Node),
+		mu:  sync.Mutex{},
+		ctx: cliCtx,
+
+		// called when the is no new nodes anymore to stop all the client workers
+		exit: cancel,
+		log:  log,
+
+		// keeping all the nodes in a map for quick check for duplicates
+		nodes: make(map[string]*node.Node),
+
+		// all new nodes also added to the list
+		// then feeder will put them to the queue
+		nodesNew: make([]*node.Node, 0, 1000),
+
+		// node considered good after successful connection and handshake
 		nodesGood: make([]*node.Node, 0),
-		// nodeErrCh: make(chan error),
+
+		// feeder will put new nodes to the queue
+		queueCh: make(chan *node.Node, cfg.ConnectionsLimit),
+
+		// results from the successfull node connection and handshake
 		nodeResCh: make(chan *node.Node),
-		guiCh:     guiCh,
+
+		// used to send updates to the gui
+		guiCh: guiCh,
+
+		// connected nodes will send batch of addresses, usually 1000
+		// then they will be proccessed by the worker wNewAddrListner
+		newAddrCh: make(chan []string, cfg.ConnectionsLimit),
 	}
 	return &c
 }
 
 func (c *Client) Start() {
-	go c.wNodesConnector() // connect to the nodes with a queue
-	go c.wNewAddrListner() // read channel with new nodes
-	go c.wGuiUpdater()     // save nodes info
+	// collect and send data to the gui via channel
+	go c.wGuiUpdater()
+
+	// save good nodes that comes from the connector workers
 	go c.wNodeResultsHandler()
+
+	// read channel with new nodes
+	go c.wNewAddrListner()
+
+	// feed the queue with new nodes
+	go c.wNodesFeeder()
+
+	// start a worker pool to connect to the nodes
+	for i := 0; i < cfg.ConnectionsLimit; i++ {
+		i := i
+		go c.wNodesConnector(i)
+	}
 }
 
-func (c *Client) Stop() {
+// TODO: refactor this to know what nodes are now connected
+func (c *Client) Disconnect() {
 	c.log.Debug("[CLIENT]: disconnecting...")
 	defer c.log.Debug("[CLIENT]: exited")
 	cnt := 0
@@ -71,55 +111,17 @@ func (c *Client) Stop() {
 func (c *Client) AddNodes(ips []string) {
 	c.log.Debugf("[CLIENT]: got batch of %d nodes\n", len(ips))
 	cnt := 1
+	c.mu.Lock()
 	for _, ip := range ips {
 		if _, ok := c.nodes[ip]; ok {
 			continue
 		}
-		mu.Lock()
-		c.nodes[ip] = node.NewNode(c.log, ip, newAddrCh)
-		mu.Unlock()
+		n := node.NewNode(c.log, ip, c.newAddrCh)
+		// add new nodes to the all nodes map but also to the queue
+		c.nodes[ip] = n
+		c.nodesNew = append(c.nodesNew, n)
 		cnt++
 	}
+	c.mu.Unlock()
 	c.log.Debugf("[CLIENT]: got %d nodes from %d batch\n", cnt, len(ips))
-}
-
-// TODO: refactor this to a proper queue
-func (c *Client) NodesQueue() []*node.Node {
-	nodes := make([]*node.Node, 0)
-	mu.Lock()
-	for _, n := range c.nodes {
-		if n.IsNew() {
-			nodes = append(nodes, n)
-		}
-	}
-	mu.Unlock()
-	return nodes
-}
-
-func (c *Client) GetFromQueue(num int) []*node.Node {
-	ret := make([]*node.Node, 0)
-	queue := c.NodesQueue()
-	if len(queue) == 0 {
-		return ret
-	}
-	for i, n := range queue {
-		if len(ret) == num || i == len(queue)-1 {
-			break
-		}
-		ret = append(ret, n)
-	}
-	return ret
-}
-
-// count busy nodes - connecting and connected status
-func (c *Client) NodesBusyCnt() int {
-	cnt := 0
-	murw.RLock()
-	for _, node := range c.nodes {
-		if node.IsConnected() || node.IsConnecting() {
-			cnt++
-		}
-	}
-	murw.RUnlock()
-	return cnt
 }

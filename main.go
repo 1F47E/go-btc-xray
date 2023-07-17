@@ -88,5 +88,5 @@ func main() {
 		go ui.Stop()
 	}
 	// Closing all the connections
-	c.Stop()
+	c.Disconnect()
 }

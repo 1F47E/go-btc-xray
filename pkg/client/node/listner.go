@@ -12,6 +12,7 @@ import (
 // listen to incoming messages
 func (n *Node) listen(ctx context.Context) {
 	a := fmt.Sprintf("◀︎ %s", n.Endpoint())
+	ticker := time.NewTicker(cfg.ListenInterval)
 	defer func() {
 		// ensure to close the connection on exit
 		if n.conn != nil {
@@ -19,12 +20,12 @@ func (n *Node) listen(ctx context.Context) {
 		}
 		n.status = disconnected
 		n.log.Warnf("%s closed\n", a)
+		ticker.Stop()
 	}()
 	// exit listener if no connection
 	if n.conn == nil {
 		return
 	}
-	ticker := time.NewTicker(cfg.ListenInterval)
 	for {
 		select {
 		case <-ctx.Done():

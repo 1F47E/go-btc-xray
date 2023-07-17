@@ -1,13 +1,47 @@
 package client
 
 import (
-	"go-btc-downloader/pkg/client/node"
 	"go-btc-downloader/pkg/gui"
 	"go-btc-downloader/pkg/storage"
 	"path/filepath"
 	"runtime"
 	"time"
 )
+
+// listen for new nodes from the connected nodes
+func (c *Client) wNewAddrListner() {
+	c.log.Debug("[CLIENT]: LISTENER worker started")
+	defer c.log.Debug("[CLIENT]: LISTNER worker exited")
+
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case ips := <-c.newAddrCh:
+			c.AddNodes(ips)
+		}
+	}
+}
+
+// feed the queue with new nodes
+func (c *Client) wNodesFeeder() {
+	ticker := time.NewTicker(time.Second * 1)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-ticker.C:
+			if len(c.nodesNew) == 0 {
+				continue
+			}
+			// feed the first node from the new nodes
+			n := c.nodesNew[0]
+			c.nodesNew = c.nodesNew[1:]
+			c.queueCh <- n
+		}
+	}
+}
 
 // get errors from the nodes connections
 func (c *Client) wNodeResultsHandler() {
@@ -23,66 +57,21 @@ func (c *Client) wNodeResultsHandler() {
 	}
 }
 
-// listen for new nodes from the connected nodes
-func (c *Client) wNewAddrListner() {
-	c.log.Debug("[CLIENT]: LISTENER worker started")
-	defer c.log.Debug("[CLIENT]: LISTNER worker exited")
-
-	for {
-		select {
-		case <-c.ctx.Done():
-			return
-		case ips := <-newAddrCh:
-			c.AddNodes(ips)
-		}
-	}
-}
-
 // Connect to the nodes with a limit of connection
-func (c *Client) wNodesConnector() {
-	c.log.Debug("[CLIENT]: CONN worker started")
-	defer c.log.Debug("[CLIENT]: CONN worker exited")
-
-	// check if we have enough connections and connect to the nodes
-	limit := cfg.ConnectionsLimit // connection pool
-	// TODO: refactor to have a queue
-	ticker := time.NewTicker(3 * time.Second)
+// Number of workers = connections limit
+func (c *Client) wNodesConnector(n int) {
+	c.log.Debugf("[CLIENT]: CONN_%d worker started", n)
+	defer func() {
+		c.log.Debugf("[CLIENT]: CONN_%d worker exited", n)
+	}()
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
-		case <-ticker.C:
-			// get connecting and connected nodes
-			connectedCnt := c.NodesBusyCnt()
-			left := limit - connectedCnt
-			// connect only if have slot
-			if left <= 0 {
-				continue
-			}
-			c.log.Infof("[CLIENT]: CONN: total nodes %d", len(c.nodes))
-			c.log.Infof("[CLIENT]: CONN: %d/%d nodes connected", connectedCnt, limit)
-			// get nodes to connect to
-			pool := c.GetFromQueue(left)
-
-			// exit client logic
-			// idea is to stop the client and close all the connections but keep the gui running
-			// if len(c.nodes) > 50 { // BUG: debug, force exit
-			if len(pool) == 0 && connectedCnt == 0 {
-				c.log.Warn("[CLIENT]: CONN: no nodes to connect, exit")
-				c.exit()
-			}
-			if len(pool) == 0 {
-				c.log.Debugf("[CLIENT]: CONN: no nodes to connect")
-				continue
-			}
-			c.log.Infof("[CLIENT]: CONN: connecting to %d nodes", len(pool))
-			for _, n := range pool {
-				go func(n *node.Node) {
-					err := n.Connect(c.ctx, c.nodeResCh)
-					if err != nil {
-						c.nodesDeadCnt++
-					}
-				}(n)
+		case n := <-c.queueCh:
+			err := n.Connect(c.ctx, c.nodeResCh)
+			if err != nil {
+				c.nodesDeadCnt++
 			}
 		}
 	}
@@ -100,20 +89,15 @@ func (c *Client) wGuiUpdater() {
 			return
 		case <-ticker.C:
 
-			queue := c.NodesQueue()
-			good := c.nodesGood
-			deadCnt := c.nodesDeadCnt
-			cntBusy := c.NodesBusyCnt() // busy nodes - connecting and connected status
-
 			// send new data to gui
 			c.guiCh <- gui.IncomingData{
-				Connections: cntBusy,
+				Connections: len(c.queueCh),
 				NodesTotal:  len(c.nodes),
-				NodesQueued: len(queue),
-				NodesGood:   len(good),
-				NodesDead:   deadCnt,
+				NodesQueued: len(c.nodesNew),
+				NodesGood:   len(c.nodesGood),
+				NodesDead:   c.nodesDeadCnt,
 			}
-			c.log.Debugf("[CLIENT]: STAT: total:%d, connected:%d/%d, dead:%d, good:%d\n", len(c.nodes), cntBusy, cfg.ConnectionsLimit, deadCnt, len(good))
+			c.log.Debugf("[CLIENT]: STAT: total:%d, connected:%d/%d, good:%d, dead:%d", len(c.nodes), len(c.queueCh), cfg.ConnectionsLimit, len(c.nodesGood), c.nodesDeadCnt)
 			// report G count and memory used
 			var m runtime.MemStats
 			runtime.ReadMemStats(&m)
@@ -121,14 +105,14 @@ func (c *Client) wGuiUpdater() {
 
 			// save good to json file
 			path := filepath.Join(cfg.DataDir, cfg.NodesFilename)
-			if len(good) > 0 {
-				err := storage.Save(path, good)
+			if len(c.nodesGood) > 0 {
+				err := storage.Save(path, c.nodesGood)
 				if err != nil {
 					c.log.Errorf("[CLIENT]: STAT: failed to save nodes: %v\n", err)
 					continue
 				}
 
-				c.log.Debugf("[CLIENT] STAT: saved %d node to %v\n", len(good), path)
+				c.log.Debugf("[CLIENT] STAT: saved %d node to %v\n", len(c.nodesGood), path)
 			}
 		}
 	}
