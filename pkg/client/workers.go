@@ -75,7 +75,8 @@ func (c *Client) wNodesConnector(n int) {
 			atomic.AddInt32(&c.activeConns, 1)
 			err := n.Connect(c.ctx, c.nodeResCh)
 			if err != nil {
-				c.nodesDeadCnt++
+				atomic.AddInt32(&c.nodesDeadCnt, 1)
+
 			}
 			atomic.AddInt32(&c.activeConns, -1)
 		}
@@ -96,12 +97,13 @@ func (c *Client) wGuiUpdater() {
 
 			// send new data to gui
 			connCnt := c.ActiveConns()
+			deadCnt := atomic.LoadInt32(&c.nodesDeadCnt)
 			c.guiCh <- gui.IncomingData{
 				Connections: connCnt,
 				NodesTotal:  len(c.nodes),
 				NodesQueued: len(c.nodesNew),
 				NodesGood:   len(c.nodesGood),
-				NodesDead:   c.nodesDeadCnt,
+				NodesDead:   deadCnt,
 			}
 			c.log.Debugf("[CLIENT]: STAT: total:%d, connected:%d/%d, good:%d, dead:%d", len(c.nodes), connCnt, cfg.ConnectionsLimit, len(c.nodesGood), c.nodesDeadCnt)
 			// report G count and memory used

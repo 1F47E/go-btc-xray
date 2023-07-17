@@ -29,14 +29,17 @@ type Client struct {
 	exit context.CancelFunc
 	log  *logger.Logger
 
-	nodes        map[string]*node.Node
-	nodesNew     []*node.Node
-	nodesGood    []*node.Node
-	nodesDeadCnt int
+	// nodes storage
+	nodes     map[string]*node.Node
+	nodesNew  []*node.Node
+	nodesGood []*node.Node
 
-	queueCh     chan *node.Node
-	activeConns int32 // atomic
+	// atomic counters
+	nodesDeadCnt int32
+	activeConns  int32
 
+	// channels
+	queueCh   chan *node.Node
 	guiCh     chan gui.IncomingData
 	nodeResCh chan *node.Node
 	newAddrCh chan []string

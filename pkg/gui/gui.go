@@ -27,7 +27,7 @@ type IncomingData struct {
 	Connections int
 	NodesTotal  int
 	NodesGood   int
-	NodesDead   int
+	NodesDead   int32
 	NodesQueued int
 	Log         string
 }
@@ -68,7 +68,7 @@ func (g *GUI) listner() {
 			g.buffNodesTotal.AddNum(d.NodesTotal)
 			g.buffNodesQueued.AddNum(d.NodesQueued)
 			g.buffNodesGood.AddNum(d.NodesGood)
-			g.buffNodesDead.AddNum(d.NodesDead)
+			g.buffNodesDead.AddNum(int(d.NodesDead))
 			g.buffLogs.AddString(d.Log)
 			mu.Unlock()
 		}
@@ -324,7 +324,7 @@ func (g *GUI) sendDebugData() {
 				NodesTotal:  rTotal,
 				NodesQueued: rQueued,
 				NodesGood:   rGood,
-				NodesDead:   rDead,
+				NodesDead:   int32(rDead),
 			}
 		}
 	}
