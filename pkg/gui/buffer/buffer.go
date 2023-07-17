@@ -43,12 +43,10 @@ func (q *GuiBuffer) AddNum(val int) {
 	// wrap the data in a box
 	q.add(box{data: f})
 
-	// copy data over from data box to the flat array
 	if q.dataFlatFloats == nil {
 		q.dataFlatFloats = make([]float64, q.size)
 	}
 	for i, v := range q.data {
-		// because q.data is preallocated we should skip all nil values
 		// [0 0 0 0 0 0 0 X X] <- new data is pushed to the back
 		if v.data == nil {
 			continue

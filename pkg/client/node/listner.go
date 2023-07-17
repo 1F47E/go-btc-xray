@@ -2,11 +2,8 @@ package node
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"io"
-	"math"
-	"math/big"
 	"time"
 
 	"github.com/btcsuite/btcd/wire"
@@ -83,8 +80,8 @@ func (n *Node) listen(ctx context.Context) {
 				n.log.Infof("%s MsgPong received\n", a)
 				if m.Nonce == n.pingNonce {
 					n.log.Debugf("%s pong OK\n", a)
-					n.pingCount++
-					n.pingNonce = 0
+					n.pongCount++
+					n.UpdatePingNonce()
 				} else {
 					n.log.Warnf("%s pong nonce mismatch, expected %v, got %v\n", a, n.pingNonce, m.Nonce)
 				}
@@ -128,9 +125,4 @@ func (n *Node) listen(ctx context.Context) {
 			}
 		}
 	}
-}
-
-func (n *Node) UpdateNonce() {
-	nonceBig, _ := rand.Int(rand.Reader, big.NewInt(int64(math.Pow(2, 62))))
-	n.pingNonce = nonceBig.Uint64()
 }

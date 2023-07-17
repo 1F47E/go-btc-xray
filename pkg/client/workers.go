@@ -4,29 +4,27 @@ import (
 	"go-btc-downloader/pkg/client/node"
 	"go-btc-downloader/pkg/gui"
 	"go-btc-downloader/pkg/storage"
+	"path/filepath"
 	"runtime"
 	"time"
 )
 
 // get errors from the nodes connections
-func (c *Client) wErrorsHandler() {
+func (c *Client) wNodeResultsHandler() {
 	c.log.Debug("[CLIENT]: ERRORS worker started")
 	defer c.log.Debug("[CLIENT]: ERRORS worker exited")
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
-		case err := <-c.errCh:
-			if err != nil {
-				c.CntDead++
-				c.log.Errorf("[CLIENT]: %s\n", err)
-			}
+		case n := <-c.nodeResCh:
+			c.nodesGood = append(c.nodesGood, n)
 		}
 	}
 }
 
 // listen for new nodes from the connected nodes
-func (c *Client) wNodesListner() {
+func (c *Client) wNewAddrListner() {
 	c.log.Debug("[CLIENT]: LISTENER worker started")
 	defer c.log.Debug("[CLIENT]: LISTNER worker exited")
 
@@ -47,6 +45,7 @@ func (c *Client) wNodesConnector() {
 
 	// check if we have enough connections and connect to the nodes
 	limit := cfg.ConnectionsLimit // connection pool
+	// TODO: refactor to have a queue
 	ticker := time.NewTicker(3 * time.Second)
 	for {
 		select {
@@ -79,9 +78,9 @@ func (c *Client) wNodesConnector() {
 			c.log.Infof("[CLIENT]: CONN: connecting to %d nodes", len(pool))
 			for _, n := range pool {
 				go func(n *node.Node) {
-					err := n.Connect(c.ctx)
+					err := n.Connect(c.ctx, c.nodeResCh)
 					if err != nil {
-						c.errCh <- err
+						c.nodesDeadCnt++
 					}
 				}(n)
 			}
@@ -90,7 +89,7 @@ func (c *Client) wNodesConnector() {
 }
 
 // Get stats of all the nodes, filter good ones, save them.
-func (c *Client) wNodesUpdater() {
+func (c *Client) wGuiUpdater() {
 	c.log.Debug("[CLIENT]: STAT: worker started")
 	defer c.log.Debug("[CLIENT]: STAT: worker exited")
 
@@ -102,8 +101,8 @@ func (c *Client) wNodesUpdater() {
 		case <-ticker.C:
 
 			queue := c.NodesQueue()
-			good := c.NodesGood()
-			deadCnt := c.CntDead
+			good := c.nodesGood
+			deadCnt := c.nodesDeadCnt
 			cntBusy := c.NodesBusyCnt() // busy nodes - connecting and connected status
 
 			// send new data to gui
@@ -121,14 +120,15 @@ func (c *Client) wNodesUpdater() {
 			c.log.Debugf("[CLIENT]: STAT: G:%d, MEM:%dKb\n", runtime.NumGoroutine(), m.Alloc/1024)
 
 			// save good to json file
+			path := filepath.Join(cfg.DataDir, cfg.NodesFilename)
 			if len(good) > 0 {
-				err := storage.Save(cfg.GoodNodesDB, good)
+				err := storage.Save(path, good)
 				if err != nil {
 					c.log.Errorf("[CLIENT]: STAT: failed to save nodes: %v\n", err)
 					continue
 				}
 
-				c.log.Debugf("[CLIENT] STAT: saved %d node to %v\n", len(good), cfg.GoodNodesDB)
+				c.log.Debugf("[CLIENT] STAT: saved %d node to %v\n", len(good), path)
 			}
 		}
 	}

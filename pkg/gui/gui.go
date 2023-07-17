@@ -146,13 +146,6 @@ func (g *GUI) Start() {
 	chartNodesDead.Data = [][]float64{make([]float64, lenNodesChart)}
 	chartNodesDead.LineColors = []tui.Color{tui.ColorRed} // force the collor, bug
 
-	// gs := make([]*widgets.Gauge, 3)
-	// for i := range gs {
-	// 	gs[i] = widgets.NewGauge()
-	// 	gs[i].Percent = i * 10
-	// 	gs[i].BarColor = tui.ColorRed
-	// }
-
 	// LOGS
 	p := widgets.NewParagraph()
 	p.WrapText = true

@@ -42,11 +42,6 @@ func initLogger() *logrus.Logger {
 	var format logrus.TextFormatter
 	if os.Getenv("GUI") == "1" {
 		path := filepath.Join(cfg.LogsDir, cfg.LogsFilename)
-		// create folder in a path if not exists
-		err := os.MkdirAll(cfg.LogsDir, 0755)
-		if err != nil {
-			log.Fatalf("error creating logs folder: %v", err)
-		}
 		file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err == nil {
 			log.SetOutput(file)

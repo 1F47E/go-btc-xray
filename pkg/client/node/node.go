@@ -2,25 +2,18 @@ package node
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"go-btc-downloader/pkg/cmd"
 	"go-btc-downloader/pkg/config"
 	"go-btc-downloader/pkg/logger"
+	"math"
+	"math/big"
 	"net"
 	"time"
 )
 
 var cfg = config.New()
-
-// type Status int
-
-// const (
-// 	StatusNew Status = iota
-// 	StatusConnecting
-// 	StatusConnected
-// 	StatusDisconnected
-// 	StatusDead
-// )
 
 type status int
 
@@ -32,39 +25,32 @@ const (
 	dead
 )
 
+type Result struct {
+	Node  *Node
+	Error error
+}
+
 type Node struct {
 	log       *logger.Logger
 	ip        string
 	conn      net.Conn
 	pingNonce uint64
-	pingCount uint8
+	pongCount uint8
 	status    status
-	isGood    bool // handshake is OK
 	version   int32
 	newAddrCh chan []string
 }
 
 func NewNode(log *logger.Logger, ip string, newAddrCh chan []string) *Node {
-	return &Node{
+	n := Node{
 		log:       log,
 		ip:        ip,
 		newAddrCh: newAddrCh,
 	}
+	n.UpdatePingNonce()
+	return &n
 }
 
-// NOT USED
-func (n *Node) Resolve() {
-	_, err := net.ResolveTCPAddr("tcp", n.ip)
-	if err != nil {
-		n.status = dead
-	}
-}
-
-// func (n *Node) Status() Status {
-// 	return n.status
-// }
-
-// returns true if connection was closed
 func (n *Node) Disconnect() bool {
 	if n.conn != nil {
 		n.conn.Close()
@@ -73,6 +59,11 @@ func (n *Node) Disconnect() bool {
 		return true
 	}
 	return false
+}
+
+func (n *Node) UpdatePingNonce() {
+	nonceBig, _ := rand.Int(rand.Reader, big.NewInt(int64(math.Pow(2, 62))))
+	n.pingNonce = nonceBig.Uint64()
 }
 
 func (n *Node) IsNew() bool {
@@ -90,25 +81,17 @@ func (n *Node) IsConnected() bool {
 	return n.status == connected && n.conn != nil
 }
 
-// debug
-func (n *Node) HasConnection() bool {
-	return n.conn != nil
-}
-
-func (n *Node) IsGood() bool {
-	return n.isGood
-}
-
 func (n *Node) Endpoint() string {
 	return fmt.Sprintf("%s:%d", n.ip, cfg.NodesPort)
 }
 
-// wrapper with brackets for ipv6
+// wrapper with brackets for ipv6 needed for net.Dial
 func (n *Node) EndpointSafe() string {
 	return fmt.Sprintf("[%s]:%d", n.ip, cfg.NodesPort)
 }
 
-func (n *Node) Connect(ctx context.Context) error {
+// returning error here will consider the node as dead
+func (n *Node) Connect(ctx context.Context, resCh chan *Node) error {
 	n.status = connecting
 	a := fmt.Sprintf("▶︎ %s", n.ip)
 	n.log.Debugf("%s connecting...\n", a)
@@ -119,7 +102,7 @@ func (n *Node) Connect(ctx context.Context) error {
 	conn, err := net.DialTimeout("tcp", n.EndpointSafe(), cfg.NodeTimeout)
 	if err != nil {
 		n.status = dead
-		return err
+		return fmt.Errorf("failed to connect: %w", err)
 	}
 	n.log.Debugf("%s connected\n", a)
 	n.conn = conn
@@ -132,7 +115,6 @@ func (n *Node) Connect(ctx context.Context) error {
 	// TODO: make it in a separate negotiation function
 	// 1. sending version
 	n.log.Debugf("%s sending version...\n", a)
-	n.UpdateNonce()
 	err = cmd.SendVersion(n.conn, n.pingNonce)
 	if err != nil {
 		return fmt.Errorf("failed to write version: %v", err)
@@ -156,7 +138,10 @@ func (n *Node) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to write verack: %v", err)
 	}
 	n.log.Debugf("%s OK\n", a)
-	n.isGood = true
+
+	// send results but continue working,
+	// asking for peers and sending a few pings
+	resCh <- n
 
 	// ====== NEGOTIATION DONE
 	time.Sleep(1 * time.Second)
@@ -165,15 +150,20 @@ func (n *Node) Connect(ctx context.Context) error {
 	n.log.Debugf("%s sending getaddr...\n", a)
 	err = cmd.SendGetAddr(n.conn)
 	if err != nil {
-		return fmt.Errorf("failed to write getaddr: %v", err)
+		n.log.Errorf("failed to write getaddr: %v", err)
+		return nil
 	}
 	n.log.Debugf("%s OK\n", a)
 
-	// send pings
+	// Sending a ping to keep a connection while waiting for peers from get addr command
+	// Waiting for the pong in the listen goroutine and increment ping count
+	// Every ping should have a nonce different from the previous one
+	// Disconnect if ping count reached or no pong received
 	timeout, cancel := context.WithTimeout(ctx, cfg.PingTimeout)
 	defer cancel()
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
+	pingCount := 0
 	for {
 		select {
 		case <-timeout.Done():
@@ -187,16 +177,21 @@ func (n *Node) Connect(ctx context.Context) error {
 				n.log.Debugf("%s disconnected\n", a)
 				return nil
 			}
-			if n.pingCount >= 1 {
-				n.log.Debugf("%s ping count reached\n", a)
+			if n.pongCount >= 1 {
+				n.log.Debugf("%s pong count reached\n", a)
+				return nil
+			}
+			if pingCount >= cfg.PingRetrys {
+				n.log.Debugf("%s ping retry count reached\n", a)
 				return nil
 			}
 			n.log.Debugf("%s sending ping...\n", a)
-			n.UpdateNonce()
 			err = cmd.SendPing(n.conn, n.pingNonce)
 			if err != nil {
-				return fmt.Errorf("failed to write ping: %v", err)
+				n.log.Errorf("failed to write ping: %v", err)
+				return nil
 			}
+			pingCount++
 			n.log.Debugf("%s OK\n", a)
 		}
 	}
