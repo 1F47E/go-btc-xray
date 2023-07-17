@@ -5,6 +5,7 @@ import (
 	"go-btc-downloader/pkg/storage"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"time"
 )
 
@@ -35,8 +36,10 @@ func (c *Client) wNodesFeeder() {
 			if len(c.nodesNew) == 0 {
 				continue
 			}
-			// feed the first node from the new nodes
 			n := c.nodesNew[0]
+			// feed the first node from the new nodes
+			// pop it from the new slice for garbage collection
+			// will block if queue is full
 			c.nodesNew = c.nodesNew[1:]
 			c.queueCh <- n
 		}
@@ -69,10 +72,12 @@ func (c *Client) wNodesConnector(n int) {
 		case <-c.ctx.Done():
 			return
 		case n := <-c.queueCh:
+			atomic.AddInt32(&c.activeConns, 1)
 			err := n.Connect(c.ctx, c.nodeResCh)
 			if err != nil {
 				c.nodesDeadCnt++
 			}
+			atomic.AddInt32(&c.activeConns, -1)
 		}
 	}
 }
@@ -90,14 +95,15 @@ func (c *Client) wGuiUpdater() {
 		case <-ticker.C:
 
 			// send new data to gui
+			connCnt := c.ActiveConns()
 			c.guiCh <- gui.IncomingData{
-				Connections: len(c.queueCh),
+				Connections: connCnt,
 				NodesTotal:  len(c.nodes),
 				NodesQueued: len(c.nodesNew),
 				NodesGood:   len(c.nodesGood),
 				NodesDead:   c.nodesDeadCnt,
 			}
-			c.log.Debugf("[CLIENT]: STAT: total:%d, connected:%d/%d, good:%d, dead:%d", len(c.nodes), len(c.queueCh), cfg.ConnectionsLimit, len(c.nodesGood), c.nodesDeadCnt)
+			c.log.Debugf("[CLIENT]: STAT: total:%d, connected:%d/%d, good:%d, dead:%d", len(c.nodes), connCnt, cfg.ConnectionsLimit, len(c.nodesGood), c.nodesDeadCnt)
 			// report G count and memory used
 			var m runtime.MemStats
 			runtime.ReadMemStats(&m)

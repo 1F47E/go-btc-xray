@@ -14,6 +14,7 @@ import (
 	"go-btc-downloader/pkg/gui"
 	"go-btc-downloader/pkg/logger"
 	"sync"
+	"sync/atomic"
 )
 
 // var murw = sync.RWMutex{}
@@ -31,7 +32,9 @@ type Client struct {
 	nodesGood    []*node.Node
 	nodesDeadCnt int
 
-	queueCh   chan *node.Node
+	queueCh     chan *node.Node
+	activeConns int32 // atomic
+
 	guiCh     chan gui.IncomingData
 	nodeResCh chan *node.Node
 	newAddrCh chan []string
@@ -60,7 +63,8 @@ func NewClient(ctx context.Context, log *logger.Logger, guiCh chan gui.IncomingD
 		nodesGood: make([]*node.Node, 0),
 
 		// feeder will put new nodes to the queue
-		queueCh: make(chan *node.Node, cfg.ConnectionsLimit),
+		queueCh:     make(chan *node.Node, cfg.ConnectionsLimit),
+		activeConns: 0,
 
 		// results from the successfull node connection and handshake
 		nodeResCh: make(chan *node.Node),
@@ -124,4 +128,8 @@ func (c *Client) AddNodes(ips []string) {
 	}
 	c.mu.Unlock()
 	c.log.Debugf("[CLIENT]: got %d nodes from %d batch\n", cnt, len(ips))
+}
+
+func (c *Client) ActiveConns() int {
+	return int(atomic.LoadInt32(&c.activeConns))
 }
