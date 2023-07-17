@@ -7,6 +7,14 @@ import (
 	"os"
 )
 
+func CreateDir(dir string) error {
+	err := os.MkdirAll(dir, 0755)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func Load(filename string) ([]string, error) {
 	var ret []string
 	// read from json

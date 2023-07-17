@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"go-btc-downloader/pkg/client"
+	"go-btc-downloader/pkg/config"
 	"go-btc-downloader/pkg/dns"
 	"go-btc-downloader/pkg/gui"
 	"go-btc-downloader/pkg/logger"
+	"go-btc-downloader/pkg/storage"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -14,8 +17,21 @@ import (
 )
 
 func main() {
-	// do not block, sending gui updates
+	var err error
+	cfg := config.New()
+
 	guiCh := make(chan gui.IncomingData, 42)
+
+	// TODO: refactor this to storage 1 func
+	err = storage.CreateDir(cfg.LogsDir)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create logs dir: %v", err))
+	}
+	err = storage.CreateDir(cfg.DataDir)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create data dir: %v", err))
+	}
+
 	log := logger.New(guiCh)
 
 	// context for graceful shutdown

@@ -19,16 +19,17 @@ const (
 
 type Config struct {
 	Network          Network
-	NodesDB          string
-	GoodNodesDB      string
+	NodesFilename    string
 	NodesPort        uint16
 	NodeTimeout      time.Duration
 	PingInterval     time.Duration
 	PingTimeout      time.Duration
+	PingRetrys       int
 	ListenInterval   time.Duration
 	ConnectionsLimit int
 	LogsDir          string
 	LogsFilename     string
+	DataDir          string
 
 	DnsAddress string
 	DnsTimeout time.Duration
@@ -55,9 +56,11 @@ func New() *Config {
 		NodeTimeout:    5 * time.Second,
 		PingInterval:   1 * time.Minute,
 		PingTimeout:    15 * time.Second,
+		PingRetrys:     3,
 		ListenInterval: 1 * time.Second,
 		LogsDir:        "logs",
 		LogsFilename:   fmt.Sprintf("logs_%s.log", time.Now().Format("2006-01-02_15-04-05")),
+		DataDir:        "data",
 		// Pver: 70013,
 	}
 	if os.Getenv("DEBUG") == "1" {
@@ -77,8 +80,7 @@ func New() *Config {
 		cfg.Network = NetworkTestnet
 		cfg.Btcnet = wire.TestNet3
 		cfg.DnsTimeout = 10 * time.Second
-		cfg.NodesDB = "data/nodes_testnet.json"
-		cfg.GoodNodesDB = "data/nodes_good_testnet.json"
+		cfg.NodesFilename = "testnet.json"
 		cfg.NodesPort = 18333
 		cfg.DnsSeeds = []string{
 			"testnet-seed.bitcoin.jonasschnelli.ch",
@@ -91,8 +93,7 @@ func New() *Config {
 		cfg.Btcnet = wire.MainNet
 
 		cfg.DnsTimeout = 5 * time.Second
-		cfg.NodesDB = "data/nodes_mainnet.json"
-		cfg.GoodNodesDB = "data/nodes_good_mainnet.json"
+		cfg.NodesFilename = "mainnet.json"
 		cfg.NodesPort = 8333
 		cfg.DnsSeeds = []string{
 			"dnsseed.emzy.de",
