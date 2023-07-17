@@ -37,7 +37,7 @@ func (d *DNS) Scan() []string {
 	m := new(dns.Msg)
 	c.Net = "tcp"
 	for _, seed := range d.dnsSeeds {
-		d.log.Debugf("[DNS]:[%s] asking for nodes\n", seed)
+		d.log.Infof("[DNS]:[%s] asking for nodes\n", seed)
 		c.Timeout = cfg.DnsTimeout
 		m.SetQuestion(dns.Fqdn(seed), dns.TypeA)
 		in, _, err := c.Exchange(m, d.dnsServer)
@@ -67,12 +67,12 @@ func (d *DNS) Scan() []string {
 			new++
 		}
 		if new > 0 {
-			d.log.Debugf("[DNS]:[%s] found %d new nodes\n", seed, new)
+			d.log.Infof("[DNS]:[%s] found %d new nodes\n", seed, new)
 		} else {
 			d.log.Debugf("[DNS]:[%s] no new nodes\n", seed)
 		}
 	}
-	d.log.Debugf("[DNS]: finished scan. Got %d nodes from %d seeds\n", len(ips), len(d.dnsSeeds))
+	d.log.Infof("[DNS]: finished scan. Got %d nodes from %d seeds\n", len(ips), len(d.dnsSeeds))
 	ret := make([]string, 0, len(ips))
 	for ip := range ips {
 		ret = append(ret, ip)

@@ -19,9 +19,9 @@ import (
 var cfg = config.New()
 var mu sync.Mutex = sync.Mutex{}
 
-const lenLogs = 25
-const lenConnChart = 14
-const lenNodesChart = 32
+const LEN_LOGS = 25
+const LEN_CONN = 14
+const LEN_NODES = 32
 
 type IncomingData struct {
 	Connections int
@@ -30,6 +30,7 @@ type IncomingData struct {
 	NodesDead   int32
 	NodesQueued int
 	Log         string
+	Msg         string
 }
 
 type GUI struct {
@@ -41,18 +42,20 @@ type GUI struct {
 	buffNodesGood   *buff.GuiBuffer
 	buffNodesDead   *buff.GuiBuffer
 	buffLogs        *buff.GuiBuffer
+	buffMsgs        *buff.GuiBuffer
 }
 
 func New(ctx context.Context, ch chan IncomingData) *GUI {
 	g := GUI{
 		ctx:             ctx,
 		ch:              ch,
-		buffConnections: buff.New(lenConnChart),
-		buffNodesTotal:  buff.New(lenNodesChart),
-		buffNodesQueued: buff.New(lenNodesChart),
-		buffNodesGood:   buff.New(lenNodesChart),
-		buffNodesDead:   buff.New(lenNodesChart),
-		buffLogs:        buff.New(lenLogs),
+		buffConnections: buff.New(LEN_CONN),
+		buffNodesTotal:  buff.New(LEN_NODES),
+		buffNodesQueued: buff.New(LEN_NODES),
+		buffNodesGood:   buff.New(LEN_NODES),
+		buffNodesDead:   buff.New(LEN_NODES),
+		buffLogs:        buff.New(LEN_LOGS),
+		buffMsgs:        buff.New(LEN_LOGS),
 	}
 	return &g
 }
@@ -70,6 +73,7 @@ func (g *GUI) listner() {
 			g.buffNodesGood.AddNum(d.NodesGood)
 			g.buffNodesDead.AddNum(int(d.NodesDead))
 			g.buffLogs.AddString(d.Log)
+			g.buffMsgs.AddString(d.Msg)
 			mu.Unlock()
 		}
 	}
@@ -125,32 +129,38 @@ func (g *GUI) Start() {
 	// TOTAL
 	chartNodesTotal := widgets.NewPlot()
 	chartNodesTotal.ShowAxes = false
-	chartNodesTotal.Data = [][]float64{make([]float64, lenNodesChart)}
+	chartNodesTotal.Data = [][]float64{make([]float64, LEN_NODES)}
 	chartNodesTotal.LineColors = []tui.Color{tui.ColorWhite} // force the collor, bug
 
 	// QUEUE
 	chartNodesQueue := widgets.NewPlot()
 	chartNodesQueue.ShowAxes = false
-	chartNodesQueue.Data = [][]float64{make([]float64, lenNodesChart)}
+	chartNodesQueue.Data = [][]float64{make([]float64, LEN_NODES)}
 	chartNodesQueue.LineColors = []tui.Color{tui.ColorYellow} // force the collor, bug
 
 	// good
 	chartNodesGood := widgets.NewPlot()
 	chartNodesGood.ShowAxes = false
-	chartNodesGood.Data = [][]float64{make([]float64, lenNodesChart)}
+	chartNodesGood.Data = [][]float64{make([]float64, LEN_NODES)}
 	chartNodesGood.LineColors = []tui.Color{tui.ColorGreen} // force the collor, bug
 
 	// dead
 	chartNodesDead := widgets.NewPlot()
 	chartNodesDead.ShowAxes = false
-	chartNodesDead.Data = [][]float64{make([]float64, lenNodesChart)}
+	chartNodesDead.Data = [][]float64{make([]float64, LEN_NODES)}
 	chartNodesDead.LineColors = []tui.Color{tui.ColorRed} // force the collor, bug
 
 	// LOGS
-	p := widgets.NewParagraph()
-	p.WrapText = true
-	p.Text = "Loading..."
-	p.Title = "Logs"
+	log := widgets.NewParagraph()
+	log.WrapText = true
+	log.Text = "Loading..."
+	log.Title = "Logs"
+
+	// MSG
+	msg := widgets.NewParagraph()
+	msg.WrapText = true
+	msg.Text = "Connecting..."
+	msg.Title = "Messages"
 
 	// construct the result grid
 	grid := tui.NewGrid()
@@ -167,7 +177,8 @@ func (g *GUI) Start() {
 		),
 		// logs
 		tui.NewRow(0.65,
-			tui.NewCol(0.9, p),
+			tui.NewCol(0.45, log),
+			tui.NewCol(0.45, msg),
 			tui.NewCol(0.1, chartConnWrap),
 		),
 		// progress
@@ -202,7 +213,8 @@ func (g *GUI) Start() {
 		case <-ticker.C:
 
 			// update logs
-			p.Text = g.buffLogs.GetString()
+			log.Text = g.buffLogs.GetString()
+			msg.Text = g.buffMsgs.GetString()
 
 			// connections update
 			chartConnWrap.Sparklines[0].Data = g.buffConnections.GetFloats()
@@ -241,18 +253,18 @@ func (g *GUI) Start() {
 
 			// debug info to logs
 			if os.Getenv("GUI_MEM") == "1" {
-				msg := fmt.Sprintf("buffNodesTotal: len %d, cap %d\n", len(g.buffNodesTotal.GetFloats()), cap(g.buffNodesTotal.GetFloats()))
-				msg += fmt.Sprintf("buffNodesQueued: len %d, cap %d\n", len(g.buffNodesQueued.GetFloats()), cap(g.buffNodesQueued.GetFloats()))
-				msg += fmt.Sprintf("buffNodesGood: len %d, cap %d\n", len(g.buffNodesGood.GetFloats()), cap(g.buffNodesGood.GetFloats()))
-				msg += fmt.Sprintf("buffNodesDead: len %d, cap %d\n", len(g.buffNodesDead.GetFloats()), cap(g.buffNodesDead.GetFloats()))
-				msg += fmt.Sprintf("buffConnections: len %d, cap %d\n", len(g.buffConnections.GetFloats()), cap(g.buffConnections.GetFloats()))
+				text := fmt.Sprintf("buffNodesTotal: len %d, cap %d\n", len(g.buffNodesTotal.GetFloats()), cap(g.buffNodesTotal.GetFloats()))
+				text += fmt.Sprintf("buffNodesQueued: len %d, cap %d\n", len(g.buffNodesQueued.GetFloats()), cap(g.buffNodesQueued.GetFloats()))
+				text += fmt.Sprintf("buffNodesGood: len %d, cap %d\n", len(g.buffNodesGood.GetFloats()), cap(g.buffNodesGood.GetFloats()))
+				text += fmt.Sprintf("buffNodesDead: len %d, cap %d\n", len(g.buffNodesDead.GetFloats()), cap(g.buffNodesDead.GetFloats()))
+				text += fmt.Sprintf("buffConnections: len %d, cap %d\n", len(g.buffConnections.GetFloats()), cap(g.buffConnections.GetFloats()))
 
 				// msg += fmt.Sprintf("dataNodesTotalLL: %d\n", g.dataNodesTotalList.Len())
 				// report G count and memory used
 				var m runtime.MemStats
 				runtime.ReadMemStats(&m)
-				msg += fmt.Sprintf("STATS: G:%d, MEM:%dKb\n", runtime.NumGoroutine(), m.Alloc/1024)
-				p.Text = msg
+				text += fmt.Sprintf("STATS: G:%d, MEM:%dKb\n", runtime.NumGoroutine(), m.Alloc/1024)
+				msg.Text = text
 			}
 			tui.Render(grid)
 		}
@@ -310,10 +322,7 @@ func (g *GUI) sendDebugData() {
 		case <-g.ctx.Done():
 			return
 		case <-ticker.C:
-			for i := 0; i < 5; i++ {
-				cnt = cnt + i
-				g.ch <- IncomingData{Log: fmt.Sprintf("test log %d\n", cnt)}
-			}
+			cnt++
 			rConn := rand.Intn(cfg.ConnectionsLimit)
 			rTotal := rand.Intn(cfg.ConnectionsLimit)
 			rQueued := rand.Intn(cfg.ConnectionsLimit)
@@ -325,6 +334,8 @@ func (g *GUI) sendDebugData() {
 				NodesQueued: rQueued,
 				NodesGood:   rGood,
 				NodesDead:   int32(rDead),
+				Log:         fmt.Sprintf("test log %d", cnt),
+				Msg:         fmt.Sprintf("test msg %d", cnt),
 			}
 		}
 	}

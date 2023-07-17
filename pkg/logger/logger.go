@@ -84,16 +84,20 @@ func (l *Logger) Close() error {
 
 // debug
 func (l *Logger) Debug(args ...interface{}) {
-	l.Logger.Debug(args...)
-	l.Ship("DEBUG", args...)
+	if os.Getenv("DEBUG") == "1" {
+		l.Logger.Debug(args...)
+		l.Ship("DEBUG", args...)
+	}
 }
 
 func (l *Logger) Debugf(format string, args ...interface{}) {
-	if !strings.HasSuffix(format, "\n") {
-		format += "\n"
+	if os.Getenv("DEBUG") == "1" {
+		if !strings.HasSuffix(format, "\n") {
+			format += "\n"
+		}
+		l.Logger.Debugf(format, args...)
+		l.Shipf("DEBUG", format, args...)
 	}
-	l.Logger.Debugf(format, args...)
-	l.Shipf("DEBUG", format, args...)
 }
 
 // info
@@ -159,6 +163,13 @@ func (l *Logger) ship(msg string) {
 	// strip newlines, logs for gui will be in a array and then joined with newlines
 	msg = strings.TrimSuffix(msg, "\n")
 	if l.guiCh != nil && len(l.guiCh) < cap(l.guiCh) {
-		l.guiCh <- gui.IncomingData{Log: msg}
+		// detect if node msg or log
+		d := gui.IncomingData{}
+		if strings.Contains(msg, "▶︎") || strings.Contains(msg, "◀︎") {
+			d.Msg = msg
+		} else {
+			d.Log = msg
+		}
+		l.guiCh <- d
 	}
 }
