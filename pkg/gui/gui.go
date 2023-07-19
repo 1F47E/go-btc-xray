@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 	"go-btc-downloader/pkg/config"
-	buff "go-btc-downloader/pkg/gui/buffer"
 	"log"
 	"math/rand"
 	"os"
 	"runtime"
-	"sync"
+	"strings"
 	"time"
 
 	tui "github.com/gizak/termui/v3"
@@ -17,7 +16,6 @@ import (
 )
 
 var cfg = config.New()
-var mu sync.Mutex = sync.Mutex{}
 
 const LEN_LOGS = 25
 const LEN_CONN = 14
@@ -36,26 +34,26 @@ type IncomingData struct {
 type GUI struct {
 	ctx             context.Context
 	ch              chan IncomingData
-	buffConnections *buff.GuiBuffer
-	buffNodesTotal  *buff.GuiBuffer
-	buffNodesQueued *buff.GuiBuffer
-	buffNodesGood   *buff.GuiBuffer
-	buffNodesDead   *buff.GuiBuffer
-	buffLogs        *buff.GuiBuffer
-	buffMsgs        *buff.GuiBuffer
+	buffConnections []float64
+	buffNodesTotal  []float64
+	buffNodesQueued []float64
+	buffNodesGood   []float64
+	buffNodesDead   []float64
+	buffLogs        []string
+	buffMsgs        []string
 }
 
 func New(ctx context.Context, ch chan IncomingData) *GUI {
 	g := GUI{
 		ctx:             ctx,
 		ch:              ch,
-		buffConnections: buff.New(LEN_CONN),
-		buffNodesTotal:  buff.New(LEN_NODES),
-		buffNodesQueued: buff.New(LEN_NODES),
-		buffNodesGood:   buff.New(LEN_NODES),
-		buffNodesDead:   buff.New(LEN_NODES),
-		buffLogs:        buff.New(LEN_LOGS),
-		buffMsgs:        buff.New(LEN_LOGS),
+		buffConnections: make([]float64, LEN_CONN),
+		buffNodesTotal:  make([]float64, LEN_NODES),
+		buffNodesQueued: make([]float64, LEN_NODES),
+		buffNodesGood:   make([]float64, LEN_NODES),
+		buffNodesDead:   make([]float64, LEN_NODES),
+		buffLogs:        make([]string, LEN_LOGS),
+		buffMsgs:        make([]string, LEN_LOGS),
 	}
 	return &g
 }
@@ -66,17 +64,33 @@ func (g *GUI) listner() {
 		case <-g.ctx.Done():
 			return
 		case d := <-g.ch:
-			mu.Lock()
-			g.buffConnections.AddNum(d.Connections)
-			g.buffNodesTotal.AddNum(d.NodesTotal)
-			g.buffNodesQueued.AddNum(d.NodesQueued)
-			g.buffNodesGood.AddNum(d.NodesGood)
-			g.buffNodesDead.AddNum(int(d.NodesDead))
-			g.buffLogs.AddString(d.Log)
-			g.buffMsgs.AddString(d.Msg)
-			mu.Unlock()
+			g.buffConnections = buffAddFloat(g.buffConnections, float64(d.Connections))
+			g.buffNodesTotal = buffAddFloat(g.buffNodesTotal, float64(d.NodesTotal))
+			g.buffNodesQueued = buffAddFloat(g.buffNodesQueued, float64(d.NodesQueued))
+			g.buffNodesGood = buffAddFloat(g.buffNodesGood, float64(d.NodesGood))
+			g.buffNodesDead = buffAddFloat(g.buffNodesDead, float64(d.NodesDead))
+			g.buffLogs = buffAddString(g.buffLogs, d.Log)
+			g.buffMsgs = buffAddString(g.buffMsgs, d.Msg)
 		}
 	}
+}
+
+func buffAddFloat(buff []float64, v float64) []float64 {
+	if v == 0 {
+		return buff
+	}
+	buff = append(buff, v)
+	buff = buff[1:]
+	return buff
+}
+
+func buffAddString(buff []string, v string) []string {
+	if v == "" {
+		return buff
+	}
+	buff = append(buff, v)
+	buff = buff[1:]
+	return buff
 }
 
 func (g *GUI) Stop() {
@@ -213,17 +227,18 @@ func (g *GUI) Start() {
 		case <-ticker.C:
 
 			// update logs
-			log.Text = g.buffLogs.GetString()
-			msg.Text = g.buffMsgs.GetString()
+			log.Text = strings.Join(g.buffLogs, "\n")
+			msg.Text = strings.Join(g.buffMsgs, "\n")
 
 			// connections update
-			chartConnWrap.Sparklines[0].Data = g.buffConnections.GetFloats()
+			chartConnWrap.Sparklines[0].Data = g.buffConnections
 
 			// calc progress
-			total := g.buffNodesTotal.GetLastNum()
-			queued := g.buffNodesQueued.GetLastNum()
-			good := g.buffNodesGood.GetLastNum()
-			dead := g.buffNodesDead.GetLastNum()
+			conn := g.buffConnections[LEN_CONN-1]
+			total := g.buffNodesTotal[LEN_NODES-1]
+			queued := g.buffNodesQueued[LEN_NODES-1]
+			good := g.buffNodesGood[LEN_NODES-1]
+			dead := g.buffNodesDead[LEN_NODES-1]
 			left := good + dead
 			if left > 0 {
 				prog := float64(left) / float64(total) * 100
@@ -236,28 +251,28 @@ func (g *GUI) Start() {
 			}
 
 			// update charts
-			chartNodesTotal.Data[0] = g.buffNodesTotal.GetFloats()
-			chartNodesQueue.Data[0] = g.buffNodesQueued.GetFloats()
-			chartNodesGood.Data[0] = g.buffNodesGood.GetFloats()
-			chartNodesDead.Data[0] = g.buffNodesDead.GetFloats()
+			chartNodesTotal.Data[0] = g.buffNodesTotal
+			chartNodesQueue.Data[0] = g.buffNodesQueued
+			chartNodesGood.Data[0] = g.buffNodesGood
+			chartNodesDead.Data[0] = g.buffNodesDead
 
 			//  update titles
-			updateTitle(chartNodesTotal, total, "Total")
-			updateTitle(chartNodesQueue, queued, "Queue")
-			updateTitle(chartNodesGood, good, "Good")
-			updateTitle(chartNodesDead, dead, "Dead")
-			updateTitleChart(chartConnWrap, g.buffConnections.GetLastNum(), "Conn.")
+			updateTitlePlot(chartNodesTotal, total, "Total")
+			updateTitlePlot(chartNodesQueue, queued, "Queue")
+			updateTitlePlot(chartNodesGood, good, "Good")
+			updateTitlePlot(chartNodesDead, dead, "Dead")
+			updateTitleChart(chartConnWrap, conn, "Conn.")
 
 			// update info
 			stats.Rows = g.getInfo()
 
 			// debug info to logs
 			if os.Getenv("GUI_MEM") == "1" {
-				text := fmt.Sprintf("buffNodesTotal: len %d, cap %d\n", len(g.buffNodesTotal.GetFloats()), cap(g.buffNodesTotal.GetFloats()))
-				text += fmt.Sprintf("buffNodesQueued: len %d, cap %d\n", len(g.buffNodesQueued.GetFloats()), cap(g.buffNodesQueued.GetFloats()))
-				text += fmt.Sprintf("buffNodesGood: len %d, cap %d\n", len(g.buffNodesGood.GetFloats()), cap(g.buffNodesGood.GetFloats()))
-				text += fmt.Sprintf("buffNodesDead: len %d, cap %d\n", len(g.buffNodesDead.GetFloats()), cap(g.buffNodesDead.GetFloats()))
-				text += fmt.Sprintf("buffConnections: len %d, cap %d\n", len(g.buffConnections.GetFloats()), cap(g.buffConnections.GetFloats()))
+				text := fmt.Sprintf("buffNodesTotal: len %d, cap %d\n", len(g.buffNodesTotal), cap(g.buffNodesTotal))
+				text += fmt.Sprintf("buffNodesQueued: len %d, cap %d\n", len(g.buffNodesQueued), cap(g.buffNodesQueued))
+				text += fmt.Sprintf("buffNodesGood: len %d, cap %d\n", len(g.buffNodesGood), cap(g.buffNodesGood))
+				text += fmt.Sprintf("buffNodesDead: len %d, cap %d\n", len(g.buffNodesDead), cap(g.buffNodesDead))
+				text += fmt.Sprintf("buffConnections: len %d, cap %d\n", len(g.buffConnections), cap(g.buffConnections))
 
 				// msg += fmt.Sprintf("dataNodesTotalLL: %d\n", g.dataNodesTotalList.Len())
 				// report G count and memory used
@@ -271,44 +286,27 @@ func (g *GUI) Start() {
 	}
 }
 
-// update GUI data
-// in serial data (charts) we push new data to the linked lists first
-// and then construct slices from the linked lists
-// func (g *GUI) Update(d IncomingData) {
-// 	mu.Lock()
-// 	g.buffConnections.AddNum(d.Connections)
-// 	g.buffNodesTotal.AddNum(d.NodesTotal)
-// 	g.buffNodesQueued.AddNum(d.NodesQueued)
-// 	g.buffNodesGood.AddNum(d.NodesGood)
-// 	g.buffNodesDead.AddNum(d.NodesDead)
-// 	mu.Unlock()
-// }
-
-func (g *GUI) Log(log string) {
-	g.buffLogs.AddString(log)
-}
-
 func (g *GUI) getInfo() [][]string {
 	return [][]string{
-		{"Total nodes", fmt.Sprintf("%d", g.buffNodesTotal.GetLastNum())},
-		{"Good nodes", fmt.Sprintf("%d", g.buffNodesGood.GetLastNum())},
-		{"Dead nodes", fmt.Sprintf("%d", g.buffNodesDead.GetLastNum())},
-		{"Queue", fmt.Sprintf("%d", g.buffNodesQueued.GetLastNum())},
-		{"Connections", fmt.Sprintf("%d/%d", g.buffConnections.GetLastNum(), cfg.ConnectionsLimit)},
+		{"Total nodes", fmt.Sprintf("%.0f", g.buffNodesTotal[LEN_NODES-1])},
+		{"Good nodes", fmt.Sprintf("%.0f", g.buffNodesGood[LEN_NODES-1])},
+		{"Dead nodes", fmt.Sprintf("%.0f", g.buffNodesDead[LEN_NODES-1])},
+		{"Queue", fmt.Sprintf("%.0f", g.buffNodesQueued[LEN_NODES-1])},
+		{"Connections", fmt.Sprintf("%.0f/%d", g.buffConnections[LEN_CONN-1], cfg.ConnectionsLimit)},
 	}
 }
 
 // update titles
-func updateTitleChart(chart *widgets.SparklineGroup, data int, title string) {
+func updateTitleChart(chart *widgets.SparklineGroup, data float64, title string) {
 	if data > 0 {
-		title += fmt.Sprintf(": %d", data)
+		title += fmt.Sprintf(": %.0f", data)
 	}
 	chart.Title = title
 }
 
-func updateTitle(chart *widgets.Plot, data int, title string) {
+func updateTitlePlot(chart *widgets.Plot, data float64, title string) {
 	if data > 0 {
-		title += fmt.Sprintf(" (%d)", data)
+		title += fmt.Sprintf(" (%.0f)", data)
 	}
 	chart.Title = title
 }

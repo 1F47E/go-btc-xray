@@ -116,7 +116,8 @@ func (c *Client) wGuiUpdater() {
 	c.log.Debug("[CLIENT]: STAT: worker started")
 	defer c.log.Debug("[CLIENT]: STAT: worker exited")
 
-	ticker := time.NewTicker(1 * time.Second)
+	// gui data update rate
+	ticker := time.NewTicker(500 * time.Millisecond)
 	for {
 		select {
 		case <-c.ctx.Done():
