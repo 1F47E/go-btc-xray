@@ -1,5 +1,5 @@
 <div align="center">
-<img src="https://github.com/1F47E/go-btc-peers/blob/master/docs/cover.png?raw=true" height="420">
+<img src="https://github.com/1F47E/go-btc-peers/blob/master/docs/cover.jpg?raw=true" height="420">
 
 
 <br><br>
@@ -20,9 +20,9 @@
 ```
 
 <div align="center">
+<a href="https://github.com/1F47E/go-btc-peers/blob/master/docs/screenshot.png">
 <img src="https://github.com/1F47E/go-btc-peers/blob/master/docs/screenshot.png?raw=true" height="420">
-
-
+</a>
 <br><br>
 </div>
 
