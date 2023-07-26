@@ -35,6 +35,8 @@ type Config struct {
 	DnsTimeout time.Duration
 	DnsSeeds   []string
 
+	Gui bool
+
 	// Wire
 	Pver uint32
 
@@ -61,10 +63,11 @@ func New() *Config {
 		LogsDir:        "logs",
 		LogsFilename:   fmt.Sprintf("logs_%s.log", time.Now().Format("2006-01-02_15-04-05")),
 		DataDir:        "data",
+		Gui:            os.Getenv("GUI") != "0", // enabled by default
 		// Pver: 70013,
 	}
 	if os.Getenv("DEBUG") == "1" {
-		cfg.ConnectionsLimit = 30
+		cfg.ConnectionsLimit = 10
 	} else {
 		cfg.ConnectionsLimit = 50
 	}

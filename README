@@ -3,27 +3,37 @@
 \/_/\_\/_  \ \  __<   \ \  __ \  \ \____ \  
   /\_\/\_\  \ \_\ \_\  \ \_\ \_\  \/\_____\ 
   \/_/\/_/   \/_/ /_/   \/_/\/_/   \/_____/ 
-
-Bitcoin peers scanner
+   bitcoin peers scanner
 
 X-Ray is an open-source tool written in Go for real-time scanning of Bitcoin peers. 
 
-Features
+=== Features
 - resolves seed nodes via DNS, 
 - connects to nodes, performs handshake dance (version, verack, ping), 
 - retrieves more node addresses from peers, 
+- good nodes are saved to json file
 
 
-Environment variables
-DEBUG=1 - enables debug mode logging (by default logging level is info)
+=== Environment variables
+DEBUG=1 - enables debug mode logging (by default logging level is info + limit connections)
 GUI=0 - disables GUI (by default GUI is enabled)
+GUI_MEM - display memory usage
 TESTNET=1 - enables testnet mode (by default mainnet is used)
+CONN=42 - overwrite maximum number of connections (by default debug 50, with debug=1 10)
 
-Docs
+=== Docs
 https://en.bitcoin.it/wiki/Protocol_documentation
 
+=== Run
+go build -o xray
+./xray
+or to run with some envs
+TESTNET=1 CONN=1 GUI=0 ./xray 
 
 TODO:
+- [ ] add a timer
+- [ ] DB 
+- [ ] API server
 - [x] resolve seed nodes via dns
 - [x] connect to nodes
 - [x] do handshake (version, verack, ping)
@@ -31,7 +41,4 @@ TODO:
 - [x] update and store peers
 - [x] CLI GUI
 - [x] gracefull shutdown
-- [ ] add a timer
-- [ ] add msg window in gui
-- [ ] DB
-- [ ] API server
+- [x] add msg window in gui

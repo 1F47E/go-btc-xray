@@ -38,8 +38,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// GUI
+
 	var ui *gui.GUI
-	if os.Getenv("GUI") != "0" {
+	if cfg.Gui {
 		ui = gui.New(ctx, guiCh)
 		go ui.Start()
 	}
