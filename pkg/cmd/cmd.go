@@ -2,8 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"go-btc-downloader/pkg/config"
 	"net"
+
+	"github.com/1F47E/go-btc-xray/pkg/config"
 
 	"github.com/btcsuite/btcd/wire"
 )
