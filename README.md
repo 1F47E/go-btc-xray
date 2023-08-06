@@ -2,7 +2,7 @@
 
 <div align="center">
 <br><br>
-<h1>xray is an open-source CLI tool written in Go for real-time scanning of bitcoin peers. </h1>
+<h1>xray is a tool for scanning bitcoin network</h1>
 <br><br>
 </div>
 
