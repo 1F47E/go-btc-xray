@@ -1,4 +1,4 @@
-![Bitcoin nodes scanner](assets/banner.png)
+![Bitcoin nodes scanner](assets/banner.jpg)
 
 <div align="center">
 <br><br>
