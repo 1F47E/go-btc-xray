@@ -16,8 +16,8 @@
 ```
 
 <div align="center">
-<a href="https://github.com/1F47E/go-btc-peers/blob/master/docs/screenshot.png">
-<img src="https://github.com/1F47E/go-btc-peers/blob/master/docs/screenshot.png?raw=true" height="420">
+<a href="assets/screenshot.png">
+<img src="assets/screenshot.png" height="420">
 </a>
 <br><br>
 </div>
