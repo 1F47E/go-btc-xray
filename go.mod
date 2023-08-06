@@ -1,4 +1,4 @@
-module go-btc-downloader
+module github.com/1F47E/go-btc-xray
 
 go 1.19
 

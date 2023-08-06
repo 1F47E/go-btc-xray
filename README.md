@@ -1,14 +1,10 @@
+![Bitcoin nodes scanner](assets/banner.png)
+
 <div align="center">
-<img src="https://github.com/1F47E/go-btc-peers/blob/master/docs/cover.jpg?raw=true" height="420">
-
-
 <br><br>
 <h1>xray is an open-source CLI tool written in Go for real-time scanning of bitcoin peers. </h1>
 <br><br>
 </div>
-
-### Yes but why?
-
 
 
 ### Features

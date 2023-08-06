@@ -3,13 +3,14 @@ package gui
 import (
 	"context"
 	"fmt"
-	"go-btc-downloader/pkg/config"
 	"log"
 	"math/rand"
 	"os"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/1F47E/go-btc-xray/pkg/config"
 
 	tui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"

@@ -2,9 +2,10 @@
 package dns
 
 import (
-	"go-btc-downloader/pkg/config"
-	"go-btc-downloader/pkg/logger"
 	"time"
+
+	"github.com/1F47E/go-btc-xray/pkg/config"
+	"github.com/1F47E/go-btc-xray/pkg/logger"
 
 	"github.com/miekg/dns"
 )

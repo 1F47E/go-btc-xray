@@ -1,11 +1,12 @@
 package client
 
 import (
-	"go-btc-downloader/pkg/gui"
-	"go-btc-downloader/pkg/storage"
 	"runtime"
 	"sync/atomic"
 	"time"
+
+	"github.com/1F47E/go-btc-xray/pkg/gui"
+	"github.com/1F47E/go-btc-xray/pkg/storage"
 )
 
 // listen for new nodes from the connected nodes

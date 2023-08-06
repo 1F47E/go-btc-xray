@@ -3,10 +3,11 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
-	"go-btc-downloader/pkg/client/node"
-	"go-btc-downloader/pkg/config"
 	"os"
 	"path/filepath"
+
+	"github.com/1F47E/go-btc-xray/pkg/client/node"
+	"github.com/1F47E/go-btc-xray/pkg/config"
 )
 
 var cfg = config.New()

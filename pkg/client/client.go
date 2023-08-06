@@ -9,14 +9,15 @@ package client
 
 import (
 	"context"
-	"go-btc-downloader/pkg/client/node"
-	"go-btc-downloader/pkg/config"
-	"go-btc-downloader/pkg/gui"
-	"go-btc-downloader/pkg/logger"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/1F47E/go-btc-xray/pkg/client/node"
+	"github.com/1F47E/go-btc-xray/pkg/config"
+	"github.com/1F47E/go-btc-xray/pkg/gui"
+	"github.com/1F47E/go-btc-xray/pkg/logger"
 )
 
 // var murw = sync.RWMutex{}

@@ -3,11 +3,12 @@ package logger
 // import logrus
 import (
 	"fmt"
-	"go-btc-downloader/pkg/config"
-	"go-btc-downloader/pkg/gui"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/1F47E/go-btc-xray/pkg/config"
+	"github.com/1F47E/go-btc-xray/pkg/gui"
 
 	"github.com/sirupsen/logrus"
 )

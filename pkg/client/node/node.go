@@ -4,13 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"go-btc-downloader/pkg/cmd"
-	"go-btc-downloader/pkg/config"
-	"go-btc-downloader/pkg/logger"
 	"math"
 	"math/big"
 	"net"
 	"time"
+
+	"github.com/1F47E/go-btc-xray/pkg/cmd"
+	"github.com/1F47E/go-btc-xray/pkg/config"
+	"github.com/1F47E/go-btc-xray/pkg/logger"
 )
 
 var cfg = config.New()
