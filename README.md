@@ -1,8 +1,9 @@
 ![Bitcoin nodes scanner](assets/banner.jpg)
+[![Go](https://github.com/1F47E/go-btc-xray/actions/workflows/go.yml/badge.svg)](https://github.com/1F47E/go-btc-xray/actions/workflows/go.yml) [![Go Report Card](https://goreportcard.com/badge/1F47E/go-btc-xray)](https://goreportcard.com/report/1F47E/go-btc-xray)
 
 <div align="center">
 <br><br>
-<h1>xray is an open-source CLI tool written in Go for real-time scanning of bitcoin peers. </h1>
+<h1>xray is a tool for scanning bitcoin network</h1>
 <br><br>
 </div>
 
