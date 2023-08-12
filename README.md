@@ -44,6 +44,8 @@ TESTNET=1 - enables testnet network (by default mainnet is used)
 
 DEBUG=1 - enables debug mode logging (by default logging level is info + limit connections)
 
+DRY_RUN=1 - disables RPC client for debugging other stuff
+
 GUI_MEM=1 - display memory usage in gui instead of messages
 
 CONN=42 - overwrite maximum number of connections (by default debug 50, with debug=1 10)

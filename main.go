@@ -53,7 +53,7 @@ func main() {
 	// RPC CLIENT
 	c := client.NewClient(ctx, log, guiCh)
 
-	if os.Getenv("GUI_DEBUG") != "1" {
+	if os.Getenv("DRY_RUN") != "1" {
 		// DNS SCAN
 		// scan seed nodes, add them to the client
 		go func() {
@@ -84,6 +84,7 @@ func main() {
 		cancel()
 	}()
 
+	log.Debug("waiting for the context to be canceled")
 	// blocking, waiting for all the goroutines to exit
 	<-ctx.Done()
 	log.Debug("context canceled, exiting")
