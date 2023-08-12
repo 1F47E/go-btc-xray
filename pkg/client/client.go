@@ -20,8 +20,6 @@ import (
 	"github.com/1F47E/go-btc-xray/pkg/logger"
 )
 
-// var murw = sync.RWMutex{}
-
 var cfg = config.New()
 
 type Client struct {

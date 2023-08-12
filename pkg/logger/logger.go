@@ -1,3 +1,5 @@
+// custom logger accepts guiCh channel
+// to send logs to the user interface
 package logger
 
 // import logrus

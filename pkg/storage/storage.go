@@ -12,12 +12,20 @@ import (
 
 var cfg = config.New()
 
-func CreateDir(dir string) error {
-	err := os.MkdirAll(dir, 0755)
+func Bootstrap() error {
+	err := createDir(cfg.LogsDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create logs dir: %v", err)
+	}
+	err = createDir(cfg.DataDir)
+	if err != nil {
+		return fmt.Errorf("failed to create data dir: %v", err)
 	}
 	return nil
+}
+
+func createDir(dir string) error {
+	return os.MkdirAll(dir, 0755)
 }
 
 func Load(filename string) ([]string, error) {
