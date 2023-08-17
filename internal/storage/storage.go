@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/1F47E/go-btc-xray/pkg/client/node"
-	"github.com/1F47E/go-btc-xray/pkg/config"
+	"github.com/1F47E/go-btc-xray/internal/client/node"
+	"github.com/1F47E/go-btc-xray/internal/config"
 )
 
 var cfg = config.New()

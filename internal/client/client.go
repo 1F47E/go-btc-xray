@@ -14,10 +14,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/1F47E/go-btc-xray/pkg/client/node"
-	"github.com/1F47E/go-btc-xray/pkg/config"
-	"github.com/1F47E/go-btc-xray/pkg/gui"
-	"github.com/1F47E/go-btc-xray/pkg/logger"
+	"github.com/1F47E/go-btc-xray/internal/client/node"
+	"github.com/1F47E/go-btc-xray/internal/config"
+	"github.com/1F47E/go-btc-xray/internal/gui"
+	"github.com/1F47E/go-btc-xray/internal/logger"
 )
 
 var cfg = config.New()

@@ -9,9 +9,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/1F47E/go-btc-xray/pkg/cmd"
-	"github.com/1F47E/go-btc-xray/pkg/config"
-	"github.com/1F47E/go-btc-xray/pkg/logger"
+	"github.com/1F47E/go-btc-xray/internal/cmd"
+	"github.com/1F47E/go-btc-xray/internal/config"
+	"github.com/1F47E/go-btc-xray/internal/logger"
 )
 
 var cfg = config.New()

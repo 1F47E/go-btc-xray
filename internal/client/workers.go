@@ -5,8 +5,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/1F47E/go-btc-xray/pkg/gui"
-	"github.com/1F47E/go-btc-xray/pkg/storage"
+	"github.com/1F47E/go-btc-xray/internal/gui"
+	"github.com/1F47E/go-btc-xray/internal/storage"
 )
 
 // listen for new nodes from the connected nodes

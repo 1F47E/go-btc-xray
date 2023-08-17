@@ -17,13 +17,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/1F47E/go-btc-xray/pkg/client"
-	"github.com/1F47E/go-btc-xray/pkg/config"
-	"github.com/1F47E/go-btc-xray/pkg/dns"
-	"github.com/1F47E/go-btc-xray/pkg/gui"
-	"github.com/1F47E/go-btc-xray/pkg/logger"
-	"github.com/1F47E/go-btc-xray/pkg/printer"
-	"github.com/1F47E/go-btc-xray/pkg/storage"
+	"github.com/1F47E/go-btc-xray/internal/client"
+	"github.com/1F47E/go-btc-xray/internal/config"
+	"github.com/1F47E/go-btc-xray/internal/dns"
+	"github.com/1F47E/go-btc-xray/internal/gui"
+	"github.com/1F47E/go-btc-xray/internal/logger"
+	"github.com/1F47E/go-btc-xray/internal/printer"
+	"github.com/1F47E/go-btc-xray/internal/storage"
 )
 
 func main() {

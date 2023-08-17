@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/1F47E/go-btc-xray/pkg/config"
-	"github.com/1F47E/go-btc-xray/pkg/gui"
+	"github.com/1F47E/go-btc-xray/internal/config"
+	"github.com/1F47E/go-btc-xray/internal/gui"
 
 	"github.com/sirupsen/logrus"
 )

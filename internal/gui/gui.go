@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/1F47E/go-btc-xray/pkg/config"
+	"github.com/1F47E/go-btc-xray/internal/config"
 
 	tui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"
